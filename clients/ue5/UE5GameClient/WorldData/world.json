@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "ai003-open-world",
+  "seed": 20261103,
+  "sizeMeters": 2048,
+  "resolution": 513,
+  "cellSize": 4,
+  "seaLevel": 0,
+  "minHeight": -75.51506489500223,
+  "maxHeight": 395.51410653814116,
+  "spawn": {
+    "x": 168,
+    "y": 39.68063735961914,
+    "z": -8
+  },
+  "files": {
+    "biomes": "biomes.r8",
+    "colors": "colors.rgba8",
+    "heightmap": "heightmap.f32"
+  },
+  "generatedBy": "server/cmd/worldgen"
+}

@@ -1,7 +1,9 @@
 {
     "name": "AI003.Runtime",
     "rootNamespace": "AI003",
-    "references": [],
+    "references": [
+        "Unity.InputSystem"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

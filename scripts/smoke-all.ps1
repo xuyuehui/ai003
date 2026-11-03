@@ -9,6 +9,7 @@ param(
     [switch]$SkipUnity,
     [switch]$SkipPlayMode,
     [switch]$SkipUE,
+    [switch]$SkipUEWorld,
     [switch]$SkipGoTests
 )
 
@@ -85,8 +86,17 @@ try {
     if (-not $SkipUE) {
         & (Join-Path $scripts 'smoke-ue5.ps1') -Engine $Engine -Url $Url
         $results['ue5'] = 'PASS'
+
+        if (-not $SkipUEWorld) {
+            & (Join-Path $scripts 'smoke-ue5-world.ps1') -Engine $Engine
+            $results['ue5-world'] = 'PASS'
+        }
+        else { $results['ue5-world'] = 'SKIP' }
     }
-    else { $results['ue5'] = 'SKIP' }
+    else {
+        $results['ue5'] = 'SKIP'
+        $results['ue5-world'] = 'SKIP'
+    }
 }
 finally {
     if ($serverProcess -and -not $serverProcess.HasExited) {

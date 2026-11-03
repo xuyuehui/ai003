@@ -68,11 +68,14 @@ UE 5.8 的要求：Windows SDK ≥ 10.0.19041（首选 10.0.22621），MSVC ≥ 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | Go 单元测试 | `go test ./...` | PASS |
+| Go 世界生成测试 | `go test ./internal/worldgen` | PASS（确定性、全部群系、出生点干燥平坦） |
 | Go 健康检查 | `GET /healthz` | `{"status":"ok",...}` |
 | Go ping 客户端 | `go run ./cmd/pingclient` | 3/3 pong，SMOKE OK |
 | Unity 批处理冒烟 | `scripts/smoke-unity.ps1` | 3/3 pong，`[AI003][SMOKE] PASS` |
-| Unity PlayMode 测试 | `scripts/test-unity-playmode.ps1` | 1/1 passed（自动挂载并收到 pong） |
-| UE5 头less 冒烟 | `scripts/smoke-ue5.ps1` | 3/3 pong，`[AI003][SMOKE] PASS` |
+| Unity 世界数据 + 网格校验 | `AI003.EditorTools.WorldSmokeTest.Run` | PASS（513² 顶点、64 块、群系齐全） |
+| Unity PlayMode 测试 | `scripts/test-unity-playmode.ps1` | 2/2 passed（连接 + 世界落地/跑动） |
+| UE5 头less 联网冒烟 | `scripts/smoke-ue5.ps1` | 3/3 pong，`[AI003][SMOKE] PASS` |
+| UE5 头less 世界冒烟 | `scripts/smoke-ue5-world.ps1` | PASS（落地 96 cm，1.5 s 跑 653 cm） |
 
 ## 实测耗时（本机，4 核）
 
@@ -84,6 +87,38 @@ UE 5.8 的要求：Windows SDK ≥ 10.0.19041（首选 10.0.22621），MSVC ≥ 
 | Unity PlayMode 测试 | 约 60 s | 约 45 s |
 | UE 首次编译（生成 makefile + UHT + 链接） | 84 s | < 2 s（Target is up to date） |
 | UE 头less 冒烟运行 | 约 20 s | 约 20 s |
+
+## 开放世界数据与 UE 材质管线
+
+**世界数据**（`world/`，由 `server/cmd/worldgen` 生成，两端只读）
+
+| 文件 | 大小 | 格式 |
+| --- | --- | --- |
+| `world.json` | 436 B | seed / 尺寸 / 分辨率 / 海平面 / 出生点 |
+| `heightmap.f32` | 1,052,676 B | 513×513 float32 小端，行优先，单位米 |
+| `colors.rgba8` | 1,052,676 B | 每顶点线性 RGBA |
+| `biomes.r8` | 263,169 B | 每顶点群系 id |
+| `preview.png` | ~236 KB | 俯视山体阴影图 |
+
+分发：Unity 读 `Assets/StreamingAssets/world/`，UE 读 `<Project>/WorldData/`，
+`scripts/generate-world.cmd` 一次写入两处，并打印 heightmap 的 SHA-256 便于比对。
+
+**UE 材质**由 `clients/ue5/UE5GameClient/Scripts/setup_assets.py` 通过
+`UnrealEditor-Cmd -run=PythonScript` 生成到 `/Game/AI003`。踩过的坑：
+
+1. UE 5.8 的 `MaterialExpressionVertexColor` 输出引脚名是**空字符串**，
+   `connect_material_property(node, "RGB", ...)` 会静默失败，必须传 `""`。
+2. `UProceduralMeshComponent::CreateMeshSection` 的 `FColor` 重载会对颜色再做一次
+   sRGB→线性转换；世界数据已经是线性值，因此改用
+   `CreateMeshSection_LinearColor(..., bSRGBConversion=false)` 才能与 Unity 一致。
+3. Python commandlet 的打印会被吞掉，诊断脚本改为直接写文件到 `artifacts/logs/`。
+
+**离屏出图**（不依赖窗口/Play Mode）
+
+- Unity：`Unity.exe -batchmode -executeMethod AI003.EditorTools.RenderWorldPreview.Run`
+  （batchmode 仍初始化 D3D，渲染到 RenderTexture 再读回 PNG）
+- UE：`UnrealEditor-Cmd.exe <project> -game -windowed -AI003WorldShot`
+  （`FScreenshotRequest` 写到 `artifacts/world-ue5.png` 后自动退出）
 
 ## 已知事项
 

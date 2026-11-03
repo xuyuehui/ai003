@@ -6,6 +6,9 @@ public class UE5GameClient : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// Headers live next to the sources (World/...), so expose the module root.
+		PublicIncludePaths.Add(ModuleDirectory);
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
@@ -15,6 +18,7 @@ public class UE5GameClient : ModuleRules
 			"WebSockets",
 			"Json",
 			"JsonUtilities",
+			"ProceduralMeshComponent",
 		});
 	}
 }
