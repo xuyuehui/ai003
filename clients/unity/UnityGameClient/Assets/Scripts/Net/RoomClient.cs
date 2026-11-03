@@ -21,6 +21,7 @@ namespace AI003.Net
         private const string ClientName = "UnityPlayer";
 
         public bool InRoom { get; private set; }
+        public string RoomId { get; private set; } = "";
 
         /// <summary>True while any client is in the arena; world HUDs use it to hide.</summary>
         public static bool AnyActive { get; private set; }
@@ -208,6 +209,7 @@ namespace AI003.Net
             if (body == null) return;
 
             _playerId = body["playerId"]?.ToString();
+            RoomId = body["roomId"]?.ToString() ?? "";
             _tickRate = body["tickRate"]?.Value<int>() ?? 20;
             _sendInterval = 1f / Mathf.Max(1, _tickRate);
             _arenaHalfMeters = (body["arenaHalfMM"]?.Value<float>() ?? 20000f) / 1000f;
@@ -416,8 +418,8 @@ namespace AI003.Net
             GUI.color = Color.white;
 
             string eventText = Time.unscaledTime < _lastEventUntil ? "   " + _lastEvent : "";
-            GUI.Label(new Rect(16f, Screen.height - 68f, 560f, 24f),
-                $"arena  hp {HP}/{MaxHP}  tick {Tick}  fighters {Players}{eventText}", _style);
+            GUI.Label(new Rect(16f, Screen.height - 68f, 620f, 24f),
+                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick}  fighters {Players}{eventText}", _style);
             GUI.Label(new Rect(16f, Screen.height - 44f, 700f, 24f),
                 "WASD / arrows move   Space attack", _style);
         }

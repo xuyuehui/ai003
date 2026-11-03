@@ -1,0 +1,79 @@
+package room
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestManagerAutoMatchFillsThenCreates(t *testing.T) {
+	m := NewManager(2)
+
+	id1, _, err := m.Enter("", "p1", "A")
+	if err != nil {
+		t.Fatalf("first enter: %v", err)
+	}
+	id2, _, err := m.Enter("", "p2", "B")
+	if err != nil {
+		t.Fatalf("second enter: %v", err)
+	}
+	if id1 != id2 || id1 != "arena-1" {
+		t.Fatalf("rooms = %q, %q, want both arena-1", id1, id2)
+	}
+
+	id3, _, err := m.Enter("", "p3", "C")
+	if err != nil {
+		t.Fatalf("third enter: %v", err)
+	}
+	if id3 != "arena-2" {
+		t.Fatalf("third room = %q, want arena-2", id3)
+	}
+
+	if m.Count() != 2 {
+		t.Fatalf("rooms = %d, want 2", m.Count())
+	}
+
+	list := m.List()
+	if len(list) != 2 || list[0].Players != 2 || list[1].Players != 1 {
+		t.Fatalf("list = %+v", list)
+	}
+	if list[0].Capacity != 2 {
+		t.Fatalf("capacity = %d, want 2", list[0].Capacity)
+	}
+}
+
+func TestManagerExplicitRoomFull(t *testing.T) {
+	m := NewManager(1)
+	if _, _, err := m.Enter("arena-9", "p1", "A"); err != nil {
+		t.Fatalf("explicit create: %v", err)
+	}
+	if _, _, err := m.Enter("arena-9", "p2", "B"); !errors.Is(err, ErrRoomFull) {
+		t.Fatalf("second enter error = %v, want ErrRoomFull", err)
+	}
+}
+
+func TestManagerLeaveFreesSlot(t *testing.T) {
+	m := NewManager(2)
+	m.Enter("", "p1", "A")
+	m.Enter("", "p2", "B")
+	m.Leave("arena-1", "p1")
+
+	id, _, err := m.Enter("", "p3", "C")
+	if err != nil {
+		t.Fatalf("enter after leave: %v", err)
+	}
+	if id != "arena-1" {
+		t.Fatalf("matched room = %q, want arena-1", id)
+	}
+}
+
+func TestManagerStepOnlyKnownRoom(t *testing.T) {
+	m := NewManager(2)
+	if _, ok := m.Step("nope"); ok {
+		t.Fatal("Step accepted an unknown room")
+	}
+	m.Enter("", "p1", "A")
+	frame, ok := m.Step("arena-1")
+	if !ok || len(frame.Players) != 1 {
+		t.Fatalf("step = %+v ok=%v", frame, ok)
+	}
+}

@@ -130,6 +130,49 @@ func TestRoomInputBeforeEnterIsRejected(t *testing.T) {
 	}
 }
 
+func TestRoomListReportsRooms(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	conn := dial(t, httpServer.URL)
+	readWelcome(t, conn)
+	enterRoom(t, conn, 10)
+
+	list, err := NewMessage("room.list", 11, nil)
+	if err != nil {
+		t.Fatalf("build room.list: %v", err)
+	}
+	if err := conn.WriteJSON(list); err != nil {
+		t.Fatalf("write room.list: %v", err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		var reply Message
+		if err := conn.ReadJSON(&reply); err != nil {
+			t.Fatalf("read room.list: %v", err)
+		}
+		if reply.Type != "room.list" {
+			continue
+		}
+		var body struct {
+			Rooms []room.Info `json:"rooms"`
+		}
+		if err := json.Unmarshal(reply.Body, &body); err != nil {
+			t.Fatalf("decode room.list: %v", err)
+		}
+		if len(body.Rooms) != 1 || body.Rooms[0].ID != "arena-1" || body.Rooms[0].Players != 1 {
+			t.Fatalf("rooms = %+v", body.Rooms)
+		}
+		if body.Rooms[0].Capacity != room.DefaultCapacity {
+			t.Fatalf("capacity = %d, want %d", body.Rooms[0].Capacity, room.DefaultCapacity)
+		}
+		return
+	}
+}
+
 func enterRoom(t *testing.T, conn messageReader, seq int64) string {
 	t.Helper()
 

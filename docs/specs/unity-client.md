@@ -99,8 +99,10 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   - HUD：血条 + `hp/tick/fighters` + 命中/死亡/复活提示；`RoomClient.AnyActive` 让
     `WorldBootstrap`/`WorldSyncClient` 隐藏自己的 HUD。
 - 模拟常量全部来自 `room.entered`，不要在客户端写死速度/伤害/冷却。
+- 房间号来自 `room.entered.roomId`（服务器自动匹配或按 `room` 指定），HUD 显示；
+  满房/错误只会打日志，客户端每秒重试进房。
 - 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)` 直接发一帧输入。
-- 已知限制：竞技场叠加在出生点草地上，角色之间无碰撞，本地移动为服务器帧回放不是预测。
+- 已知限制：竞技场叠加在出生点草地上，本地移动为服务器帧回放不是预测；断线即离房。
 
 ## 7. 编辑器自动化与测试
 

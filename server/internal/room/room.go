@@ -101,17 +101,31 @@ var spawnPoints = [][2]int64{
 	{-4000, -4000},
 }
 
+// PlayerRadiusMM is the collision radius used to keep fighters apart.
+const PlayerRadiusMM int64 = 400
+
 // Room holds the deterministic arena state.
 type Room struct {
-	mu      sync.Mutex
-	players map[string]*Player
-	order   []string
-	tick    uint64
+	mu       sync.Mutex
+	players  map[string]*Player
+	order    []string
+	tick     uint64
+	capacity int
 }
 
-// New creates an empty room.
-func New() *Room {
-	return &Room{players: make(map[string]*Player)}
+// New creates an empty room with the given capacity (<=0 uses the default).
+func New(capacity int) *Room {
+	if capacity <= 0 {
+		capacity = DefaultCapacity
+	}
+	return &Room{players: make(map[string]*Player), capacity: capacity}
+}
+
+// Count returns the number of players currently in the room.
+func (r *Room) Count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.players)
 }
 
 // Tick returns the current tick number.
@@ -216,10 +230,65 @@ func (r *Room) Step() Frame {
 		frame.Inputs[id] = p.Input
 		r.stepPlayer(p, &frame.Events)
 	}
+	r.separate()
 	for _, id := range r.order {
 		frame.Players = append(frame.Players, stateOf(r.players[id]))
 	}
 	return frame
+}
+
+// separate pushes overlapping fighters apart along the dominant axis. It is
+// integer-only and deterministic, and runs after every movement/attack so all
+// clients compute the same positions.
+func (r *Room) separate() {
+	const stepMM int64 = 20
+	const minDistMM = 2 * PlayerRadiusMM
+
+	for i := 0; i < len(r.order); i++ {
+		a := r.players[r.order[i]]
+		if a.Respawn > 0 {
+			continue
+		}
+		for j := i + 1; j < len(r.order); j++ {
+			b := r.players[r.order[j]]
+			if b.Respawn > 0 {
+				continue
+			}
+
+			dx := b.X - a.X
+			dz := b.Z - a.Z
+			if dx*dx+dz*dz >= minDistMM*minDistMM {
+				continue
+			}
+
+			if dx == 0 && dz == 0 {
+				dx = 1
+			}
+			if abs64(dx) >= abs64(dz) {
+				dir := sign64(dx)
+				a.X = clamp(a.X-dir*stepMM, -ArenaHalfMM, ArenaHalfMM)
+				b.X = clamp(b.X+dir*stepMM, -ArenaHalfMM, ArenaHalfMM)
+			} else {
+				dir := sign64(dz)
+				a.Z = clamp(a.Z-dir*stepMM, -ArenaHalfMM, ArenaHalfMM)
+				b.Z = clamp(b.Z+dir*stepMM, -ArenaHalfMM, ArenaHalfMM)
+			}
+		}
+	}
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func sign64(v int64) int64 {
+	if v < 0 {
+		return -1
+	}
+	return 1
 }
 
 func (r *Room) stepPlayer(p *Player, events *[]Event) {

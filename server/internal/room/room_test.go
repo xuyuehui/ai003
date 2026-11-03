@@ -6,7 +6,7 @@ import (
 )
 
 func TestMovementAndArenaClamp(t *testing.T) {
-	r := New()
+	r := New(DefaultCapacity)
 	r.Enter("p1", "Alice")
 
 	r.SetInput("p1", Input{DX: 1})
@@ -25,7 +25,7 @@ func TestMovementAndArenaClamp(t *testing.T) {
 }
 
 func TestDiagonalIsNotFaster(t *testing.T) {
-	r := New()
+	r := New(DefaultCapacity)
 	r.Enter("p1", "Alice")
 	r.SetInput("p1", Input{DX: 1, DZ: 1})
 
@@ -36,7 +36,7 @@ func TestDiagonalIsNotFaster(t *testing.T) {
 }
 
 func TestAttackCooldownAndDeath(t *testing.T) {
-	r := New()
+	r := New(DefaultCapacity)
 	r.Enter("attacker", "A")
 	r.Enter("target", "B")
 
@@ -103,7 +103,7 @@ func TestAttackCooldownAndDeath(t *testing.T) {
 }
 
 func TestOutOfRangeAndCone(t *testing.T) {
-	r := New()
+	r := New(DefaultCapacity)
 	r.Enter("a", "A")
 	r.Enter("b", "B")
 
@@ -116,7 +116,7 @@ func TestOutOfRangeAndCone(t *testing.T) {
 }
 
 func TestDeterministicFrames(t *testing.T) {
-	first, second := New(), New()
+	first, second := New(DefaultCapacity), New(DefaultCapacity)
 	for _, r := range []*Room{first, second} {
 		r.Enter("p1", "A")
 		r.Enter("p2", "B")
@@ -142,7 +142,7 @@ func TestDeterministicFrames(t *testing.T) {
 }
 
 func TestLeave(t *testing.T) {
-	r := New()
+	r := New(DefaultCapacity)
 	r.Enter("p1", "A")
 	r.Enter("p2", "B")
 	r.Leave("p1")
@@ -153,6 +153,28 @@ func TestLeave(t *testing.T) {
 	}
 	if r.SetInput("p1", Input{}) {
 		t.Fatal("SetInput accepted a player who left")
+	}
+}
+
+func TestPlayersSeparate(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("a", "A")
+	r.Enter("b", "B")
+
+	// Walk both towards the centre so they overlap, then let separation act.
+	r.SetInput("a", Input{DX: 1})
+	r.SetInput("b", Input{DX: -1})
+	var frame Frame
+	for i := 0; i < 60; i++ {
+		frame = r.Step()
+	}
+
+	a := playerByID(frame, "a")
+	b := playerByID(frame, "b")
+	dx := b.X - a.X
+	dz := b.Z - a.Z
+	if dx*dx+dz*dz < (2*PlayerRadiusMM-40)*(2*PlayerRadiusMM-40) {
+		t.Fatalf("players overlap after separation: a=(%d,%d) b=(%d,%d)", a.X, a.Z, b.X, b.Z)
 	}
 }
 

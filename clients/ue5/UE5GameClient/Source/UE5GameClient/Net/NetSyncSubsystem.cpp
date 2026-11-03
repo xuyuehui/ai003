@@ -404,8 +404,8 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 		{
 			NextHudAt = Now + 0.25;
 			GEngine->AddOnScreenDebugMessage(1, 0.3f, FColor::White,
-				FString::Printf(TEXT("ARENA   hp %d/%d   tick %d   fighters %d   [WASD move, Space attack]"),
-					RoomHP, RoomMaxHP, RoomTick, RoomFighters));
+				FString::Printf(TEXT("%s   hp %d/%d   tick %d   fighters %d   [WASD move, Space attack]"),
+					*RoomId, RoomHP, RoomMaxHP, RoomTick, RoomFighters));
 		}
 	}
 

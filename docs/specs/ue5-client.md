@@ -89,9 +89,10 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   直接 `SetActorLocation`（房间坐标 → `RoomCenter + (x,z)*100cm`）。
 - 远端用 `ARemotePlayer` 显示，动画由帧间位移推导（run/walk/idle）。
 - 世界快照在房间激活时忽略（`ApplySnapshot` 早退），避免同一玩家出现两个化身。
-- HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `hp/tick/fighters`。
+- HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `roomId/hp/tick/fighters`。
 - 调试：`-AI003RoomBot` 让客户端自动走向场地中心并周期性攻击（用于双端对战验证）。
-- 已知限制：单 `arena` 房间、无角色间碰撞、无预测/回滚、房间叠加在大世界出生点。
+- 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点，
+  断线即离房。
 
 ## 6. 材质
 

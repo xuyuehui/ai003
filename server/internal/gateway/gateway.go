@@ -66,12 +66,19 @@ type Server struct {
 	up  websocket.Upgrader
 	hub *Hub
 
-	room     *room.Room
+	rooms    *room.Manager
 	roomMu   sync.Mutex
-	roomSubs map[string]func(Message)
+	roomSubs map[string]roomSub
+	sessions map[string]string // session id -> room id
 
 	stop     chan struct{}
 	stopOnce sync.Once
+}
+
+// roomSub is one connection's subscription to a specific room.
+type roomSub struct {
+	roomID string
+	send   func(Message)
 }
 
 // New builds a Server that logs through logger (which may be nil).
@@ -88,8 +95,9 @@ func New(logger *slog.Logger) *Server {
 	}
 	s.hub = NewHub(logger, SnapshotRate)
 	s.hub.Start()
-	s.room = room.New()
-	s.roomSubs = make(map[string]func(Message))
+	s.rooms = room.NewManager(room.DefaultCapacity)
+	s.roomSubs = make(map[string]roomSub)
+	s.sessions = make(map[string]string)
 	s.stop = make(chan struct{})
 	go s.roomLoop()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -103,7 +111,7 @@ func (s *Server) Close() {
 	s.hub.Close()
 }
 
-// roomLoop advances the deterministic combat room at a fixed 20 Hz.
+// roomLoop advances every deterministic combat room at a fixed 20 Hz.
 func (s *Server) roomLoop() {
 	ticker := time.NewTicker(time.Duration(room.TickMillis) * time.Millisecond)
 	defer ticker.Stop()
@@ -113,38 +121,47 @@ func (s *Server) roomLoop() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			frame := s.room.Step()
-			if len(frame.Players) == 0 {
-				continue
-			}
+			for _, roomID := range s.rooms.RoomIDs() {
+				frame, ok := s.rooms.Step(roomID)
+				if !ok || len(frame.Players) == 0 {
+					continue
+				}
 
-			s.roomMu.Lock()
-			subs := make([]func(Message), 0, len(s.roomSubs))
-			for _, send := range s.roomSubs {
-				subs = append(subs, send)
-			}
-			s.roomMu.Unlock()
-			if len(subs) == 0 {
-				continue
-			}
+				s.roomMu.Lock()
+				subs := make([]func(Message), 0, len(s.roomSubs))
+				for _, sub := range s.roomSubs {
+					if sub.roomID == roomID {
+						subs = append(subs, sub.send)
+					}
+				}
+				s.roomMu.Unlock()
+				if len(subs) == 0 {
+					continue
+				}
 
-			msg, err := NewMessage("room.frame", 0, frame)
-			if err != nil {
-				s.log.Error("encode room frame", "error", err)
-				continue
-			}
-			for _, send := range subs {
-				send(msg)
+				msg, err := NewMessage("room.frame", 0, frame)
+				if err != nil {
+					s.log.Error("encode room frame", "error", err)
+					continue
+				}
+				for _, send := range subs {
+					send(msg)
+				}
 			}
 		}
 	}
 }
 
 func (s *Server) leaveRoom(id string) {
-	s.room.Leave(id)
 	s.roomMu.Lock()
+	roomID := s.sessions[id]
+	delete(s.sessions, id)
 	delete(s.roomSubs, id)
 	s.roomMu.Unlock()
+
+	if roomID != "" {
+		s.rooms.Leave(roomID, id)
+	}
 }
 
 // Handler returns the root HTTP handler.
@@ -290,6 +307,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		case "room.enter":
 			var body struct {
 				Name string `json:"name"`
+				Room string `json:"room"`
 			}
 			if len(msg.Body) > 0 {
 				if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -298,15 +316,20 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			state := s.room.Enter(sessionID, body.Name)
-			tick, players := s.room.Snapshot()
+			roomID, state, err := s.rooms.Enter(body.Room, sessionID, body.Name)
+			if err != nil {
+				writeError(msg.Seq, msg.Type, err.Error())
+				continue
+			}
+			tick, players, _ := s.rooms.Snapshot(roomID)
 
 			s.roomMu.Lock()
-			s.roomSubs[sessionID] = func(m Message) { _ = write(m) }
+			s.sessions[sessionID] = roomID
+			s.roomSubs[sessionID] = roomSub{roomID: roomID, send: func(m Message) { _ = write(m) }}
 			s.roomMu.Unlock()
 
 			entered, err := NewMessage("room.entered", msg.Seq, map[string]any{
-				"roomId":              "arena",
+				"roomId":              roomID,
 				"playerId":            sessionID,
 				"tick":                tick,
 				"state":               state,
@@ -331,7 +354,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				log.Warn("write room.entered", "error", err)
 				return
 			}
-			log.Info("room entered", "player", sessionID, "tick", tick)
+			log.Info("room entered", "player", sessionID, "room", roomID, "tick", tick)
 
 		case "room.input":
 			var in room.Input
@@ -339,18 +362,39 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				writeError(msg.Seq, msg.Type, "invalid room.input body: "+err.Error())
 				continue
 			}
-			if !s.room.SetInput(sessionID, in) {
+			s.roomMu.Lock()
+			roomID := s.sessions[sessionID]
+			s.roomMu.Unlock()
+			if roomID == "" {
 				writeError(msg.Seq, msg.Type, "room.enter before room.input")
 				continue
 			}
+			if !s.rooms.SetInput(roomID, sessionID, in) {
+				writeError(msg.Seq, msg.Type, "room.input for unknown player")
+				continue
+			}
+
+		case "room.list":
+			list, err := NewMessage("room.list", msg.Seq, map[string]any{"rooms": s.rooms.List()})
+			if err != nil {
+				log.Error("encode room.list", "error", err)
+				return
+			}
+			if err := write(list); err != nil {
+				log.Warn("write room.list", "error", err)
+				return
+			}
 
 		case "room.leave":
+			s.roomMu.Lock()
+			roomID := s.sessions[sessionID]
+			s.roomMu.Unlock()
 			s.leaveRoom(sessionID)
-			left, err := NewMessage("room.left", msg.Seq, map[string]any{"roomId": "arena"})
+			left, err := NewMessage("room.left", msg.Seq, map[string]any{"roomId": roomID})
 			if err == nil {
 				_ = write(left)
 			}
-			log.Info("room left", "player", sessionID)
+			log.Info("room left", "player", sessionID, "room", roomID)
 
 		default:
 			writeError(msg.Seq, msg.Type, "unknown message type: "+msg.Type)
