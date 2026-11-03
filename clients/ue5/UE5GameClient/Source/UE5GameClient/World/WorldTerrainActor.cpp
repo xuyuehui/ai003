@@ -102,12 +102,15 @@ void AWorldTerrainActor::Build(const FAI003WorldData& Data)
 					const int32 I2 = I0 + VertsPerAxis;
 					const int32 I3 = I2 + 1;
 
+					// Unreal front faces are clockwise seen from above; this is the
+					// reverse of Unity's winding. Back-facing terrain also breaks the
+					// floor test (capsule floats in Falling mode), so keep this order.
 					Triangles.Add(I0);
-					Triangles.Add(I1);
 					Triangles.Add(I2);
 					Triangles.Add(I1);
+					Triangles.Add(I1);
+					Triangles.Add(I2);
 					Triangles.Add(I3);
-					Triangles.Add(I2);
 				}
 			}
 

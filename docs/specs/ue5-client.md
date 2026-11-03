@@ -57,7 +57,13 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 | 可行走坡度 | 48° |
 | 相机 | SpringArm 650 cm，SocketOffset 80，相机滞后 12 |
 
-- 视觉用引擎 BasicShapes（Cylinder + Cube）+ `/Game/AI003/M_Player*`，后续替换为骨骼网格。
+- 视觉为骨骼网格 `/Game/Characters/KenneyProtagonists/characterMedium`（Kenney Protagonists，CC0），
+  59 骨骼；动画 `/Game/Characters/KenneyProtagonists/Anims/{idle,jump,run}` 绑在同一 Skeleton 上。
+- 网格相对变换：`Z=-96`、`Yaw=-90`、`Scale=0.45`（源模型 3.76 m、脚底为轴心，转到 1.7 m 并面向角色 +X）。
+- 动画用单节点 `PlayAnimation`：着地按速度切 Idle/Run（Run 播放速率随速度 0.6–1.6），
+  离地播 Jump 一次并保持末帧，落地自动切回；没有 AnimBlueprint 依赖。
+- 材质 `/Game/AI003/M_PlayerSkin` 采样 `skaterMaleA` 皮肤贴图，必须带 `UsedWithSkeletalMesh` 标记
+  （`Scripts/fix_material_flags.py` 负责，否则打包/`-game` 回退默认材质）。
 - 输入走 legacy 映射（`Config/DefaultInput.ini`），不依赖 Enhanced Input 资产；
   `DefaultPlayerInputClass=/Script/Engine.PlayerInput`。
 

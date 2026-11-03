@@ -27,6 +27,17 @@ namespace AI003.Player
         public float CurrentSpeed => IsSwimming ? SwimSpeed : (IsSprinting ? SprintSpeed : WalkSpeed);
         public bool IsSprinting { get; private set; }
 
+        /// <summary>Actual horizontal speed from the character controller (m/s).</summary>
+        public float PlanarSpeed
+        {
+            get
+            {
+                if (_controller == null) return 0f;
+                Vector3 velocity = _controller.velocity;
+                return new Vector2(velocity.x, velocity.z).magnitude;
+            }
+        }
+
         /// <summary>Test seam: when true, <see cref="ExternalInput"/> replaces the keyboard.</summary>
         public bool UseExternalInput { get; set; }
         public Vector2 ExternalInput { get; set; }

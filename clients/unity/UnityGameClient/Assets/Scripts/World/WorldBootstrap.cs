@@ -133,24 +133,11 @@ namespace AI003.World
             controller.skinWidth = 0.03f;
             controller.minMoveDistance = 0f;
 
-            Material bodyMaterial = CreateLitMaterial(new Color(0.10f, 0.52f, 0.58f));
-            Material noseMaterial = CreateLitMaterial(new Color(0.92f, 0.46f, 0.12f));
+            Player = playerObject.AddComponent<ThirdPersonController>();
+            Player.World = Data;
+            Player.SeaLevel = Data.SeaLevel;
 
-            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = "Body";
-            Destroy(body.GetComponent<Collider>());
-            body.transform.SetParent(playerObject.transform, false);
-            body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-            body.transform.localScale = new Vector3(0.72f, 0.9f, 0.72f);
-            body.GetComponent<MeshRenderer>().sharedMaterial = bodyMaterial;
-
-            GameObject nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            nose.name = "Facing";
-            Destroy(nose.GetComponent<Collider>());
-            nose.transform.SetParent(playerObject.transform, false);
-            nose.transform.localPosition = new Vector3(0f, 1.25f, 0.34f);
-            nose.transform.localScale = new Vector3(0.14f, 0.12f, 0.3f);
-            nose.GetComponent<MeshRenderer>().sharedMaterial = noseMaterial;
+            AttachCharacter(playerObject);
 
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
@@ -164,12 +151,47 @@ namespace AI003.World
             CameraRig = cameraObject.AddComponent<OrbitCamera>();
             CameraRig.Target = playerObject.transform;
 
-            Player = playerObject.AddComponent<ThirdPersonController>();
             Player.CameraTransform = cameraObject.transform;
-            Player.World = Data;
-            Player.SeaLevel = Data.SeaLevel;
 
             CameraRig.Snap();
+        }
+
+        /// <summary>
+        /// Spawns the Kenney protagonists model (Resources) under the controller and
+        /// wires its animator; falls back to the old capsule if the asset is missing.
+        /// </summary>
+        private void AttachCharacter(GameObject playerObject)
+        {
+            const string root = "Characters/KenneyProtagonists/";
+            GameObject prefab = Resources.Load<GameObject>(root + "Player");
+            if (prefab == null)
+            {
+                Debug.LogWarning("[AI003] player prefab missing, using capsule fallback (run SetupPlayerCharacter)");
+                GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                body.name = "Body";
+                Destroy(body.GetComponent<Collider>());
+                body.transform.SetParent(playerObject.transform, false);
+                body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+                body.transform.localScale = new Vector3(0.72f, 0.9f, 0.72f);
+                body.GetComponent<MeshRenderer>().sharedMaterial = CreateLitMaterial(new Color(0.10f, 0.52f, 0.58f));
+                return;
+            }
+
+            GameObject model = Instantiate(prefab, playerObject.transform);
+            model.name = "CharacterModel";
+            model.transform.localPosition = Vector3.zero;
+            // The prefab already carries the avatar, material and 180-degree facing;
+            // keep the visual scale in one place (3.96 m model -> 1.8 m character).
+            model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            model.transform.localScale = Vector3.one * 0.45f;
+
+            foreach (var collider in model.GetComponentsInChildren<Collider>())
+            {
+                Destroy(collider);
+            }
+
+            var animation = model.AddComponent<PlayerAnimation>();
+            animation.Controller = Player;
         }
 
         private static Material CreateLitMaterial(Color color)

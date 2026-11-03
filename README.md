@@ -17,14 +17,20 @@
 - 两端加载**同一份数据**（高度图 / 顶点色 / 生物群系 / 出生点），地形逐顶点一致
 - 角色可在世界中跑动：重力、地形碰撞、48° 斜坡、台阶、跳跃、第三人称相机；
   Unity 侧额外支持入水游泳（UE 侧的水面交互待补）
+- 角色视觉为 **Kenney Animated Characters: Protagonists**（CC0）骨骼模型 + `Idle` / `Run` / `Jump`
+  三段动画，两端加载同一套 FBX 与皮肤贴图，见 [assets/characters/kenney-protagonists](assets/characters/kenney-protagonists/SOURCE.md)
 - 支持头less 自动化验证：Unity 数据/网格校验 + PlayMode 物理测试，UE `-game -nullrhi` 冒烟
 
 | Unity 出生点视角 | UE5 出生点视角 | 世界俯视 |
 | --- | --- | --- |
 | ![Unity](docs/images/world-unity.png) | ![UE5](docs/images/world-ue5.png) | ![overview](docs/images/world-overview.png) |
 
-> 上图是开发期渲染产物（`artifacts/` 默认被 git 忽略，用 `scripts/smoke-*.cmd` 重新生成）。
-> 两端光照/材质仍在打磨，UE 侧的色调偏灰、角色背光面偏暗，见"已知差异"。
+| Unity 角色（Idle） | UE5 角色（Idle） |
+| --- | --- |
+| ![Unity character](docs/images/character-unity.png) | ![UE5 character](docs/images/character-ue5.png) |
+
+> 上图是开发期渲染产物，用 `scripts/smoke-unity.cmd` / `scripts/smoke-ue5-world.cmd` 重新生成。
+> 两端光照/材质仍在打磨，见"已知差异"。
 
 此前的环境骨架（WebSocket `ping/pong`）仍然保留并通过测试：
 

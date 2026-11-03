@@ -63,6 +63,16 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 
 - 深水（水深 >1.6 m 且低于水面）切游泳浮力，目标水面下 0.85 m。
 - 参数只允许在角色/相机组件上调，不要在 `Update` 里写魔法数。
+- 角色视觉：`Assets/Resources/Characters/KenneyProtagonists/` 下的 Kenney Protagonists（CC0）
+  骨骼模型 + `Idle` / `Run` / `Jump` 动画，由 `Assets/Editor/SetupPlayerCharacter.cs` 生成：
+  - `Player.prefab`（带 Avatar、Animator、`M_Player` 材质，缩放 0.45 面向 +Z）
+  - `PlayerAnimator.controller`（`Speed` / `Grounded` 参数，Idle↔Run↔Jump）
+  - `Idle/Run/Jump.anim`：从 FBX 复制的“净化版” clip——去掉根节点位移/旋转/缩放曲线，
+    并把骨骼路径补上 `Root/` 前缀（否则 root 缩放 100× 会覆盖 prefab 缩放、曲线也绑不上骨骼）
+- `PlayerAnimation` 把实际水平速度归一化到 `Speed`、把 `IsGrounded` 写进 `Grounded`；
+  缺 prefab 时 `WorldBootstrap` 回退到胶囊，不会黑屏。
+- 生成步骤：Unity 菜单/编辑器里执行 `AI003.EditorTools.SetupPlayerCharacter.Run()`；
+  改模型导入设置或动画后需重跑一次。
 
 ## 6. 网络
 

@@ -1,13 +1,14 @@
 #include "World/WorldCharacter.h"
 
+#include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
-#include "Components/StaticMeshComponent.h"
-#include "Engine/StaticMesh.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "Materials/MaterialInterface.h"
+#include "GameFramework/WorldSettings.h"
 
 AWorldCharacter::AWorldCharacter()
 {
@@ -42,34 +43,44 @@ AWorldCharacter::AWorldCharacter()
 	Camera->bUsePawnControlRotation = false;
 	Camera->FieldOfView = 62.f;
 
-	BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
-	BodyMesh->SetupAttachment(GetCapsuleComponent());
-	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	BodyMesh->SetRelativeScale3D(FVector(0.84f, 0.84f, 1.92f));
-
-	FacingMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FacingMesh"));
-	FacingMesh->SetupAttachment(GetCapsuleComponent());
-	FacingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	FacingMesh->SetRelativeLocation(FVector(52.f, 0.f, 40.f));
-	FacingMesh->SetRelativeScale3D(FVector(0.4f, 0.16f, 0.12f));
+	// The Kenney mesh is attached in BeginPlay; no static placeholder parts.
 }
 
 void AWorldCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	LoadCharacterAssets();
+}
 
-	UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-	UMaterialInterface* BodyMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/AI003/M_PlayerBody.M_PlayerBody"));
-	UMaterialInterface* AccentMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/AI003/M_PlayerAccent.M_PlayerAccent"));
+void AWorldCharacter::LoadCharacterAssets()
+{
+	USkeletalMesh* CharacterMesh = LoadObject<USkeletalMesh>(
+		nullptr, TEXT("/Game/Characters/KenneyProtagonists/characterMedium.characterMedium"));
+	if (CharacterMesh == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI003] missing character mesh /Game/Characters/KenneyProtagonists/characterMedium"));
+		return;
+	}
 
-	if (Cylinder != nullptr) BodyMesh->SetStaticMesh(Cylinder);
-	if (Cube != nullptr) FacingMesh->SetStaticMesh(Cube);
-	if (BodyMaterial != nullptr) BodyMesh->SetMaterial(0, BodyMaterial);
-	if (AccentMaterial != nullptr) FacingMesh->SetMaterial(0, AccentMaterial);
+	IdleSequence = LoadObject<UAnimSequence>(
+		nullptr, TEXT("/Game/Characters/KenneyProtagonists/Anims/idle.idle"));
+	RunSequence = LoadObject<UAnimSequence>(
+		nullptr, TEXT("/Game/Characters/KenneyProtagonists/Anims/run.run"));
+	JumpSequence = LoadObject<UAnimSequence>(
+		nullptr, TEXT("/Game/Characters/KenneyProtagonists/Anims/jump.jump"));
 
-	// Keep the camera from clipping through the skull cylinder.
-	BodyMesh->SetCastShadow(true);
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	MeshComponent->SetSkeletalMeshAsset(CharacterMesh);
+	// Mesh pivot is at the feet: lift it to the capsule centre and scale the
+	// 3.76 m source down to a 1.7 m character.
+	MeshComponent->SetRelativeLocation(FVector(0.f, 0.f, -96.f));
+	// The Kenney FBX faces -Y after UE's axis conversion; turn it to the actor's +X.
+	MeshComponent->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	MeshComponent->SetRelativeScale3D(FVector(0.45f));
+	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	CurrentSequence = nullptr;
+	UpdateAnimation();
 }
 
 void AWorldCharacter::Tick(float DeltaSeconds)
@@ -79,6 +90,46 @@ void AWorldCharacter::Tick(float DeltaSeconds)
 	if (bAutoRun && Controller != nullptr)
 	{
 		AddMovementInput(GetActorForwardVector(), 1.f);
+	}
+
+	UpdateAnimation();
+}
+
+void AWorldCharacter::UpdateAnimation()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (MeshComponent == nullptr || IdleSequence == nullptr)
+	{
+		return;
+	}
+
+	const float Speed = GetVelocity().Size2D();
+	const bool bGrounded = GetCharacterMovement()->IsMovingOnGround();
+
+	UAnimSequence* Wanted = bGrounded
+		? (Speed > 10.f ? RunSequence.Get() : IdleSequence.Get())
+		: JumpSequence.Get();
+	if (Wanted == nullptr)
+	{
+		return;
+	}
+
+	if (Wanted != CurrentSequence)
+	{
+		// Loop locomotion, play the jump once and hold its last pose until landing.
+		MeshComponent->PlayAnimation(Wanted, Wanted != JumpSequence);
+		CurrentSequence = Wanted;
+		UE_LOG(LogTemp, Display, TEXT("[AI003][ANIM] %s grounded=%d speed=%.0f z=%.0f"),
+			*Wanted->GetName(), bGrounded ? 1 : 0, Speed, GetActorLocation().Z);
+	}
+
+	if (Wanted == RunSequence)
+	{
+		MeshComponent->SetPlayRate(FMath::Clamp(Speed / 300.f, 0.6f, 1.6f));
+	}
+	else if (Wanted == IdleSequence)
+	{
+		MeshComponent->SetPlayRate(1.f);
 	}
 }
 

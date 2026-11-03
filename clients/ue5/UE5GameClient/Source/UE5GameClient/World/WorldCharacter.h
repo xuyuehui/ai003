@@ -6,7 +6,7 @@
 
 class UCameraComponent;
 class USpringArmComponent;
-class UStaticMeshComponent;
+class UAnimSequence;
 
 /** Third person character: walk/run, jump, gravity and terrain collision. */
 UCLASS()
@@ -32,17 +32,26 @@ protected:
 	void EndSprint();
 
 private:
+	void LoadCharacterAssets();
+	void UpdateAnimation();
+
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USpringArmComponent> SpringArm;
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UCameraComponent> Camera;
 
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<UStaticMeshComponent> BodyMesh;
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequence> IdleSequence;
 
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<UStaticMeshComponent> FacingMesh;
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequence> RunSequence;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequence> JumpSequence;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequence> CurrentSequence;
 
 	bool bSprinting = false;
 	bool bAutoRun = false;

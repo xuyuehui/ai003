@@ -169,6 +169,15 @@ void AWorldGameMode::BeginAutomation()
 {
 	if (bWorldShot)
 	{
+		if (AWorldCharacter* Player = Cast<AWorldCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+		{
+			const UCharacterMovementComponent* Movement = Player->GetCharacterMovement();
+			UE_LOG(LogTemp, Display,
+				TEXT("[AI003][SHOT] player z=%.0f mode=%d vz=%.0f gravity=%.1f controller=%d"),
+				Player->GetActorLocation().Z, static_cast<int32>(Movement->MovementMode),
+				Movement->Velocity.Z, Movement->GravityScale, Player->GetController() != nullptr ? 1 : 0);
+		}
+
 		IFileManager::Get().MakeDirectory(*FPaths::GetPath(ShotPath), true);
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		UE_LOG(LogTemp, Display, TEXT("[AI003][SHOT] requested %s"), *ShotPath);
