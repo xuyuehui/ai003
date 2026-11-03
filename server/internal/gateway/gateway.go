@@ -1,4 +1,4 @@
-﻿// Package gateway implements the single network entry point that both
+// Package gateway implements the single network entry point that both
 // clients 鈥?Unity 6 and Unreal Engine 5 鈥?connect to.
 //
 // Transport: WebSocket at /ws, one JSON envelope per text frame:
@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"ai003/server/internal/room"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -28,7 +30,8 @@ const (
 
 	// ProtocolVersion is bumped whenever the envelope schema changes.
 	// v2: join / move / snapshot (server-authoritative player state).
-	ProtocolVersion = 2
+	// v3: room.enter / room.entered / room.input / room.frame / room.leave (frame sync).
+	ProtocolVersion = 3
 
 	readLimit   = 64 << 10
 	writeWait   = 10 * time.Second
@@ -62,6 +65,13 @@ type Server struct {
 	mux *http.ServeMux
 	up  websocket.Upgrader
 	hub *Hub
+
+	room     *room.Room
+	roomMu   sync.Mutex
+	roomSubs map[string]func(Message)
+
+	stop     chan struct{}
+	stopOnce sync.Once
 }
 
 // New builds a Server that logs through logger (which may be nil).
@@ -78,13 +88,64 @@ func New(logger *slog.Logger) *Server {
 	}
 	s.hub = NewHub(logger, SnapshotRate)
 	s.hub.Start()
+	s.room = room.New()
+	s.roomSubs = make(map[string]func(Message))
+	s.stop = make(chan struct{})
+	go s.roomLoop()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	return s
 }
 
-// Close stops background work (the snapshot broadcast loop).
-func (s *Server) Close() { s.hub.Close() }
+// Close stops background work (snapshot hub and room tick loop).
+func (s *Server) Close() {
+	s.stopOnce.Do(func() { close(s.stop) })
+	s.hub.Close()
+}
+
+// roomLoop advances the deterministic combat room at a fixed 20 Hz.
+func (s *Server) roomLoop() {
+	ticker := time.NewTicker(time.Duration(room.TickMillis) * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-ticker.C:
+			frame := s.room.Step()
+			if len(frame.Players) == 0 {
+				continue
+			}
+
+			s.roomMu.Lock()
+			subs := make([]func(Message), 0, len(s.roomSubs))
+			for _, send := range s.roomSubs {
+				subs = append(subs, send)
+			}
+			s.roomMu.Unlock()
+			if len(subs) == 0 {
+				continue
+			}
+
+			msg, err := NewMessage("room.frame", 0, frame)
+			if err != nil {
+				s.log.Error("encode room frame", "error", err)
+				continue
+			}
+			for _, send := range subs {
+				send(msg)
+			}
+		}
+	}
+}
+
+func (s *Server) leaveRoom(id string) {
+	s.room.Leave(id)
+	s.roomMu.Lock()
+	delete(s.roomSubs, id)
+	s.roomMu.Unlock()
+}
 
 // Handler returns the root HTTP handler.
 func (s *Server) Handler() http.Handler { return s.mux }
@@ -111,6 +172,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	log := s.log.With("session", sessionID, "remote", r.RemoteAddr)
 	log.Info("client connected")
 	defer func() {
+		s.leaveRoom(sessionID)
 		s.hub.Leave(sessionID)
 		_ = conn.Close()
 		log.Info("client disconnected")
@@ -225,6 +287,71 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+		case "room.enter":
+			var body struct {
+				Name string `json:"name"`
+			}
+			if len(msg.Body) > 0 {
+				if err := json.Unmarshal(msg.Body, &body); err != nil {
+					writeError(msg.Seq, msg.Type, "invalid room.enter body: "+err.Error())
+					continue
+				}
+			}
+
+			state := s.room.Enter(sessionID, body.Name)
+			tick, players := s.room.Snapshot()
+
+			s.roomMu.Lock()
+			s.roomSubs[sessionID] = func(m Message) { _ = write(m) }
+			s.roomMu.Unlock()
+
+			entered, err := NewMessage("room.entered", msg.Seq, map[string]any{
+				"roomId":              "arena",
+				"playerId":            sessionID,
+				"tick":                tick,
+				"state":               state,
+				"players":             players,
+				"tickRate":            room.TickRate,
+				"tickMillis":          room.TickMillis,
+				"arenaHalfMM":         room.ArenaHalfMM,
+				"speedMMPerTick":      room.SpeedMMPerTick,
+				"diagonalMMPerTick":   room.DiagonalMMPerTick,
+				"attackRangeMM":       room.AttackRangeMM,
+				"attackDamage":        room.AttackDamage,
+				"attackCooldownTicks": room.AttackCooldownTicks,
+				"maxHP":               room.MaxHP,
+				"respawnTicks":        room.RespawnTicks,
+				"buttonAttack":        room.ButtonAttack,
+			})
+			if err != nil {
+				log.Error("encode room.entered", "error", err)
+				return
+			}
+			if err := write(entered); err != nil {
+				log.Warn("write room.entered", "error", err)
+				return
+			}
+			log.Info("room entered", "player", sessionID, "tick", tick)
+
+		case "room.input":
+			var in room.Input
+			if err := json.Unmarshal(msg.Body, &in); err != nil {
+				writeError(msg.Seq, msg.Type, "invalid room.input body: "+err.Error())
+				continue
+			}
+			if !s.room.SetInput(sessionID, in) {
+				writeError(msg.Seq, msg.Type, "room.enter before room.input")
+				continue
+			}
+
+		case "room.leave":
+			s.leaveRoom(sessionID)
+			left, err := NewMessage("room.left", msg.Seq, map[string]any{"roomId": "arena"})
+			if err == nil {
+				_ = write(left)
+			}
+			log.Info("room left", "player", sessionID)
+
 		default:
 			writeError(msg.Seq, msg.Type, "unknown message type: "+msg.Type)
 		}
@@ -238,4 +365,3 @@ func newSessionID() string {
 	}
 	return hex.EncodeToString(b[:])
 }
-

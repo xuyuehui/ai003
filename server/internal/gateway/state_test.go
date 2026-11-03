@@ -137,6 +137,7 @@ func waitSnapshot(t *testing.T, conn messageReader, timeout time.Duration, pred 
 	t.Fatal("snapshot condition not met before deadline")
 	return Snapshot{}
 }
+
 type messageReader interface {
 	WriteJSON(any) error
 	ReadJSON(any) error

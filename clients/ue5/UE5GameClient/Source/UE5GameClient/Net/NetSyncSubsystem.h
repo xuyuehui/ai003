@@ -45,10 +45,20 @@ private:
 	void RemoveStale(const TSet<FString>& Seen);
 	bool Tick(float DeltaSeconds);
 
+	// Combat room (protocol v3).
+	void SendRoomEnter();
+	void SendRoomInput();
+	void EnterRoom(const TSharedPtr<FJsonObject>& Body);
+	void ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body);
+	class AWorldCharacter* LocalCharacter() const;
+	FVector RoomToWorld(double XMeters, double ZMeters) const;
+
 	TSharedPtr<IWebSocket> Socket;
 	FTSTicker::FDelegateHandle TickerHandle;
 
 	TMap<FString, TWeakObjectPtr<ARemotePlayer>> Remotes;
+	TMap<FString, TWeakObjectPtr<ARemotePlayer>> RoomRemotes;
+	TMap<FString, FVector> RoomLastPositions;
 
 	FString Endpoint = TEXT("ws://127.0.0.1:8080/ws");
 	FString PlayerId;
@@ -60,4 +70,21 @@ private:
 	bool bConnecting = false;
 	bool bConnected = false;
 	bool bEnabled = true;
+
+	bool bRoomEnabled = false;
+	bool bRoomActive = false;
+	bool bRoomBot = false;
+	FString RoomId;
+	int32 RoomTick = 0;
+	int32 RoomHP = 100;
+	int32 RoomMaxHP = 100;
+	int32 RoomFighters = 0;
+	double RoomLocalX = 0.0;
+	double RoomLocalZ = 0.0;
+	double RoomSendInterval = 0.05;
+	double NextRoomSendAt = 0.0;
+	double NextRoomEnterAt = 0.0;
+	double NextHudAt = 0.0;
+	float RoomYaw = 0.f;
+	FVector RoomCenter = FVector::ZeroVector;
 };

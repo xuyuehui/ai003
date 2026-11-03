@@ -81,6 +81,18 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   服务器不在时子系统只打 warning 并重连。
 - 已知限制：远端没有骨骼混合/位移匹配，突变位置靠插值追上；UE 侧水下仍是行走。
 
+### 5.2 房间战斗（协议 v3）
+
+- `NetSyncSubsystem` 内实现房间：`-AI003Room` 开启，连上后自动 `room.enter`，
+  20 Hz 发 `room.input`（WASD/方向键 + 空格攻击）。
+- 进房时 `DisableMovement()` 并把 `RoomCenter` 设成角色当前位置；之后按 `room.frame`
+  直接 `SetActorLocation`（房间坐标 → `RoomCenter + (x,z)*100cm`）。
+- 远端用 `ARemotePlayer` 显示，动画由帧间位移推导（run/walk/idle）。
+- 世界快照在房间激活时忽略（`ApplySnapshot` 早退），避免同一玩家出现两个化身。
+- HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `hp/tick/fighters`。
+- 调试：`-AI003RoomBot` 让客户端自动走向场地中心并周期性攻击（用于双端对战验证）。
+- 已知限制：单 `arena` 房间、无角色间碰撞、无预测/回滚、房间叠加在大世界出生点。
+
 ## 6. 材质
 
 - `/Game/AI003` 下材质由 `Scripts/setup_assets.py` 通过 Python commandlet 生成，重跑会覆盖；

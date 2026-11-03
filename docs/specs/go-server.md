@@ -19,6 +19,7 @@ cmd/server/          网关进程（唯一对外入口）
 cmd/pingclient/      命令行冒烟客户端
 cmd/worldgen/        世界生成器
 internal/gateway/    WebSocket 网关 + 测试
+internal/room/       房间确定性模拟（帧同步战斗）+ 测试
 internal/worldgen/   地形/群系/颜色 + 测试
 ```
 
@@ -53,6 +54,19 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - 快照广播用直接写回调，不引入额外队列；单机原型下玩家数量很小，慢客户端由写超时兜底。
 - 测试：`state_test.go` 覆盖清洗/动画派生/玩家表，`gateway_test.go` 覆盖
   双人互见、位置同步、断线移除、未 join 先 move 被拒。
+
+### 4.2 房间与帧同步（协议 v3）
+
+- `internal/room` 只做纯模拟，不 import gateway：`Enter/Leave/SetInput/Step/Snapshot`。
+- 所有数值是整数毫米与 `int8` 输入，**禁止浮点**，保证 Go/C#/C++ 三端逐 tick 一致；
+  伤害/冷却/复活/锥角判定都写成整数表达式。
+- `gateway` 起一个 20 Hz 循环调用 `room.Step()`，把 `room.frame` 序列化一次后广播给
+  `roomSubs`；`room.enter`/`room.input`/`room.leave` 在连接读循环里处理。
+- `room.entered` 下发全部模拟常量（tickRate、场地半宽、速度、攻击范围/伤害/冷却、
+  最大 HP、复活时间、攻击按键位），客户端不得写死。
+- 掉线即 `Leave`；房间为空时循环空转但不广播。
+- 测试：`room_test.go` 覆盖移动/夹取/斜向不加速/锥角/冷却/死亡/复活/确定性；
+  `room_ws_test.go` 覆盖双人同帧、输入生效、离开移除、未进入先输入被拒。
 
 ## 5. 世界生成
 

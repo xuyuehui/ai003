@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -30,14 +31,28 @@ namespace AI003.Net
         private float _nextReconnectAt;
         private bool _connecting;
 
-        // Every received frame is copied here for gameplay code to drain on the
-        // main thread. A queue (not an event) survives domain reloads and keeps
-        // late subscribers from missing the join/snapshot stream.
-        private readonly System.Collections.Concurrent.ConcurrentQueue<Envelope> _gameplay =
-            new System.Collections.Concurrent.ConcurrentQueue<Envelope>();
+        // Every received frame is also appended to a ring buffer that gameplay
+        // systems read with independent cursors. A shared queue would let one
+        // consumer (world sync) swallow frames meant for another (room sync);
+        // the ring keeps every consumer independent and survives domain reloads.
+        private readonly object _ringLock = new object();
+        private readonly Envelope[] _ring = new Envelope[2048];
+        private int _ringWritten;
 
-        /// <summary>Next frame for gameplay code, or false when the queue is empty.</summary>
-        public bool TryDequeueGameplay(out Envelope envelope) => _gameplay.TryDequeue(out envelope);
+        /// <summary>Copies every frame newer than <paramref name="cursor"/>.</summary>
+        public void ReadFrames(ref int cursor, List<Envelope> into)
+        {
+            if (into == null) return;
+            lock (_ringLock)
+            {
+                int oldest = Mathf.Max(0, _ringWritten - _ring.Length);
+                if (cursor < oldest) cursor = oldest;
+                for (; cursor < _ringWritten; cursor++)
+                {
+                    into.Add(_ring[cursor % _ring.Length]);
+                }
+            }
+        }
 
         /// <summary>Last pong round-trip in milliseconds, for HUD/debug output.</summary>
         public double LastPingMs { get; private set; }
@@ -184,9 +199,13 @@ namespace AI003.Net
         {
             MessageReceived?.Invoke(envelope);
 
-            // Bound the gameplay queue in case no sync component is consuming it.
-            while (_gameplay.Count > 1024) _gameplay.TryDequeue(out _);
-            _gameplay.Enqueue(envelope);
+            // Bound the ring implicitly (it overwrites) and let every consumer
+            // read independently; see ReadFrames.
+            lock (_ringLock)
+            {
+                _ring[_ringWritten % _ring.Length] = envelope;
+                _ringWritten++;
+            }
 
             switch (envelope.Type)
             {

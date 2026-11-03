@@ -209,6 +209,12 @@ namespace AI003.World
                 return;
             }
 
+            // The arena draws its own HUD while it owns the avatar.
+            if (AI003.Net.RoomClient.AnyActive)
+            {
+                return;
+            }
+
             if (_hudStyle == null)
             {
                 _hudStyle = new GUIStyle(GUI.skin.label)

@@ -90,6 +90,18 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   （walk 用 Run 以 0.7 倍速播放，jump 切空中状态）。
 - 新增报文必须同步 Go 与 UE，并提升 `gateway.ProtocolVersion`。
 
+### 6.1 房间战斗（协议 v3）
+
+- `RoomClient`（自动挂载，`AI003_ROOM=1` 才启用，避免影响探索与测试）：
+  - 连上后 `room.enter`，20 Hz 发 `room.input`（WASD/方向键 + 空格攻击）；
+  - 收 `room.frame` 后按服务器状态驱动本地角色与远端 `RemoteAvatar`，位置/朝向按 20/s 插值；
+  - 进入房间时 `WorldSyncClient.Suspend()`（隐藏大世界远端、停止上报 move），离开时 `Resume()`；
+  - HUD：血条 + `hp/tick/fighters` + 命中/死亡/复活提示；`RoomClient.AnyActive` 让
+    `WorldBootstrap`/`WorldSyncClient` 隐藏自己的 HUD。
+- 模拟常量全部来自 `room.entered`，不要在客户端写死速度/伤害/冷却。
+- 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)` 直接发一帧输入。
+- 已知限制：竞技场叠加在出生点草地上，角色之间无碰撞，本地移动为服务器帧回放不是预测。
+
 ## 7. 编辑器自动化与测试
 
 批处理入口（Unity 是 GUI 子系统，脚本必须 `Start-Process` 等待进程退出）：

@@ -255,4 +255,3 @@ func TestMoveBeforeJoinIsRejected(t *testing.T) {
 		}
 	}
 }
-

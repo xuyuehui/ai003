@@ -27,6 +27,7 @@ namespace AI003.Net
 
         private readonly Dictionary<string, RemoteAvatar> _remotes = new Dictionary<string, RemoteAvatar>();
         private readonly List<string> _stale = new List<string>();
+        private readonly List<Envelope> _inbox = new List<Envelope>();
 
         private ConnectionBootstrap _connection;
         private ThirdPersonController _local;
@@ -34,6 +35,7 @@ namespace AI003.Net
 
         private string _playerId;
         private int _playersSeen;
+        private int _cursor;
         private float _nextSendAt;
         private float _nextJoinAt;
         private GUIStyle _style;
@@ -42,6 +44,26 @@ namespace AI003.Net
         public string LocalPlayerId => _playerId;
         public int RemoteCount => _remotes.Count;
         public int PlayersSeen => _playersSeen;
+
+        /// <summary>True while the combat room owns the avatar and hides world peers.</summary>
+        public bool Suspended { get; private set; }
+
+        public void Suspend()
+        {
+            Suspended = true;
+            ClearRemotes();
+        }
+
+        public void Resume() => Suspended = false;
+
+        private void ClearRemotes()
+        {
+            foreach (var avatar in _remotes.Values)
+            {
+                if (avatar != null) Destroy(avatar.gameObject);
+            }
+            _remotes.Clear();
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoInstall()
@@ -93,10 +115,12 @@ namespace AI003.Net
                 if (_connection == null) return;
             }
 
-            while (_connection.TryDequeueGameplay(out Envelope envelope))
+            _connection.ReadFrames(ref _cursor, _inbox);
+            for (int i = 0; i < _inbox.Count; i++)
             {
-                HandleMessage(envelope);
+                HandleMessage(_inbox[i]);
             }
+            _inbox.Clear();
 
             if (!_connection.IsConnected)
             {
@@ -119,6 +143,8 @@ namespace AI003.Net
                 }
                 return;
             }
+
+            if (Suspended) return;
 
             if (Time.unscaledTime >= _nextSendAt)
             {
@@ -177,6 +203,8 @@ namespace AI003.Net
 
         private void ApplySnapshot(JObject body)
         {
+            if (Suspended) return;
+
             var players = body?["players"] as JArray;
             if (players == null) return;
 
@@ -252,6 +280,7 @@ namespace AI003.Net
         private void OnGUI()
         {
             if (!Joined) return;
+            if (RoomClient.AnyActive) return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.label)
