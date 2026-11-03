@@ -1,0 +1,14 @@
+* text=auto
+
+# Batch files must keep CRLF so cmd.exe parses them reliably.
+*.cmd text eol=crlf
+
+# Source and data files are stored LF-normalised by git.
+*.ps1 text eol=crlf
+*.go text eol=lf
+*.cs text eol=lf
+*.csproj text eol=crlf
+*.json text eol=lf
+*.md text eol=lf
+*.ini text eol=lf
+*.uproject text eol=lf
