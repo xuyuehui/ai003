@@ -67,6 +67,20 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 输入走 legacy 映射（`Config/DefaultInput.ini`），不依赖 Enhanced Input 资产；
   `DefaultPlayerInputClass=/Script/Engine.PlayerInput`。
 
+### 5.1 状态同步（协议 v2）
+
+- `Net/NetSyncSubsystem.*`（`UGameInstanceSubsystem`）自动连接网关：
+  - `join`（`client=ue5`）后 10 Hz 发 `move`；本地角色取 `UGameplayStatics::GetPlayerPawn`；
+  - 每 50 ms tick 一次，断线 3 s 重连，`-AI003NoSync` 可整体关闭；
+  - 用 `-AI003Url=ws://host:port/ws` 覆盖地址。
+- 坐标换算：发送时 `x=UE.X/100`、`y=(UE.Z-96)/100`（脚底）、`z=UE.Y/100`；
+  接收时反过来 `UE = (x, z, y) * 100`，并给胶囊中心补 96 cm。yaw 直接透传。
+- `Net/RemotePlayer.*`：轻量 Actor（SceneComponent + SkeletalMesh），加载同一套
+  Kenney 网格与 `Anims/*`，按服务器 `anim` 单节点播放；位置/朝向 12/s 插值。
+- 状态同步与冒烟互不影响：`-AI003WorldSmoke`/`-AI003WorldShot` 不依赖服务器，
+  服务器不在时子系统只打 warning 并重连。
+- 已知限制：远端没有骨骼混合/位移匹配，突变位置靠插值追上；UE 侧水下仍是行走。
+
 ## 6. 材质
 
 - `/Game/AI003` 下材质由 `Scripts/setup_assets.py` 通过 Python commandlet 生成，重跑会覆盖；

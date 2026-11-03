@@ -30,6 +30,15 @@ namespace AI003.Net
         private float _nextReconnectAt;
         private bool _connecting;
 
+        // Every received frame is copied here for gameplay code to drain on the
+        // main thread. A queue (not an event) survives domain reloads and keeps
+        // late subscribers from missing the join/snapshot stream.
+        private readonly System.Collections.Concurrent.ConcurrentQueue<Envelope> _gameplay =
+            new System.Collections.Concurrent.ConcurrentQueue<Envelope>();
+
+        /// <summary>Next frame for gameplay code, or false when the queue is empty.</summary>
+        public bool TryDequeueGameplay(out Envelope envelope) => _gameplay.TryDequeue(out envelope);
+
         /// <summary>Last pong round-trip in milliseconds, for HUD/debug output.</summary>
         public double LastPingMs { get; private set; }
 
@@ -37,6 +46,29 @@ namespace AI003.Net
         public int PongsReceived { get; private set; }
 
         public string Endpoint => _url;
+
+        /// <summary>Raised on the main thread for every frame the gateway sends.</summary>
+        public event Action<Envelope> MessageReceived;
+
+        public bool IsConnected => _client != null && _client.IsConnected;
+
+        /// <summary>Next envelope sequence number, shared with gameplay code.</summary>
+        public long NextSeq() => ++_seq;
+
+        /// <summary>Fire-and-forget send; failures are logged, not thrown.</summary>
+        public async void Send(Envelope envelope)
+        {
+            var client = _client;
+            if (client == null || !client.IsConnected || envelope == null) return;
+            try
+            {
+                await client.SendAsync(envelope);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AI003] send {envelope.Type} {envelope.Seq} failed: {e.GetType().Name}: {e.Message}");
+            }
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoInstall()
@@ -66,6 +98,11 @@ namespace AI003.Net
 
         private void Update()
         {
+            // A script reload wipes statics while the DontDestroyOnLoad object
+            // survives; re-register so gameplay code can always find us.
+            if (Instance == null) Instance = this;
+            if (WorldSyncClient.Instance == null) WorldSyncClient.EnsureExists();
+
             if (_client == null)
             {
                 if (Time.unscaledTime >= _nextReconnectAt) TryConnect();
@@ -145,6 +182,12 @@ namespace AI003.Net
 
         private void Handle(Envelope envelope)
         {
+            MessageReceived?.Invoke(envelope);
+
+            // Bound the gameplay queue in case no sync component is consuming it.
+            while (_gameplay.Count > 1024) _gameplay.TryDequeue(out _);
+            _gameplay.Enqueue(envelope);
+
             switch (envelope.Type)
             {
                 case "welcome":
@@ -162,6 +205,10 @@ namespace AI003.Net
 
                 case "error":
                     Debug.LogWarning($"[AI003] gateway error for seq={envelope.Seq}: {envelope.Body}");
+                    break;
+
+                case "snapshot":
+                    // 10 Hz stream; gameplay code consumes it via MessageReceived.
                     break;
 
                 default:

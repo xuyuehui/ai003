@@ -21,6 +21,20 @@
   三段动画，两端加载同一套 FBX 与皮肤贴图，见 [assets/characters/kenney-protagonists](assets/characters/kenney-protagonists/SOURCE.md)
 - 支持头less 自动化验证：Unity 数据/网格校验 + PlayMode 物理测试，UE `-game -nullrhi` 冒烟
 
+**里程碑 2：服务器权威状态同步**（已完成基础版）
+
+- 协议 **v2**：`join` / `joined` / `move` / `snapshot`，服务器保存每个玩家的权威位置、朝向、
+  速度与状态，按 **10 Hz** 广播快照，见 [protocol/README.md](protocol/README.md)
+- 服务器做边界与非法值清洗（位置夹到 ±1024 m、高度 −200..600 m、NaN 归零），
+  动画状态（idle/walk/run/jump/swim）也由服务器派生，保证两端表现一致
+- Unity / UE 各自 10 Hz 上报本地角色，收到快照后用 `RemoteAvatar`（Unity）与
+  `ARemotePlayer`（UE）平滑插值渲染他人；坐标统一为"脚底 + 米 + Unity 轴序"
+- 已验证：同时开 Unity Play Mode 与 UE `-game`，两端都能看到对方角色并互相同步位置
+
+| Unity：两个客户端同屏 | UE5：同一场景的远端角色 |
+| --- | --- |
+| ![Unity sync](docs/images/sync-two-clients.png) | ![UE5 sync](docs/images/sync-ue5.png) |
+
 | Unity 出生点视角 | UE5 出生点视角 | 世界俯视 |
 | --- | --- | --- |
 | ![Unity](docs/images/world-unity.png) | ![UE5](docs/images/world-ue5.png) | ![overview](docs/images/world-overview.png) |
@@ -255,7 +269,8 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
-| 服务器状态同步 | 尚未实现，角色移动目前各端本地 | 下一轮：服务器权威位置 + 快照广播 + 他人插值 |
+| 客户端预测 | 本地角色仍是"自己算、再上报"，服务器不回滚不纠偏 | 加输入序号 + 服务器校正 + 预测回滚 |
+| 远端动画 | 用服务器派生的 anim 名称做单节点切换，无混合、无位移匹配 | 状态机/混合树、脚步同步 |
 | UE 光照观感 | 色调偏灰、角色背光面偏暗，天空/雾还在调 | 对齐 Unity 的曝光与补光，必要时加后处理体积 |
 | 水下物理 | Unity 有游泳浮力，UE 仍是"水下行走" | UE 补 `MOVE_Swimming` 或自定义浮力 |
 | 地形精度 | 4 m 网格、平滑着色，近看缺少细节 | 加贴图/法线细节或提高分辨率 + LOD |
@@ -265,8 +280,8 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 
 按需求逐个实现，建议顺序：
 
-1. 状态同步：服务器权威移动、快照广播、双端插值/预测（MMORPG 大世界默认模型）；
-2. 房间副本与帧同步战斗：独立房间服、固定 tick、回滚/确定性；
+1. 房间副本与帧同步战斗：独立房间服、固定 tick、回滚/确定性；
+2. 状态同步增强：客户端预测/纠偏、速度与朝向插值、断线重连后的续接；
 3. 画面统一：同一机位、同一光照、同一后处理的双端对比场景；
 4. 世界扩展：流式地形、植被/建筑、可交互物；
 5. 自动化：`smoke-all` 接入 CI，增加性能与画面回归。

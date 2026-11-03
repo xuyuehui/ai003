@@ -1,5 +1,5 @@
-// Package gateway implements the single network entry point that both
-// clients — Unity 6 and Unreal Engine 5 — connect to.
+﻿// Package gateway implements the single network entry point that both
+// clients 鈥?Unity 6 and Unreal Engine 5 鈥?connect to.
 //
 // Transport: WebSocket at /ws, one JSON envelope per text frame:
 //
@@ -27,7 +27,8 @@ const (
 	Version = "0.1.0"
 
 	// ProtocolVersion is bumped whenever the envelope schema changes.
-	ProtocolVersion = 1
+	// v2: join / move / snapshot (server-authoritative player state).
+	ProtocolVersion = 2
 
 	readLimit   = 64 << 10
 	writeWait   = 10 * time.Second
@@ -60,6 +61,7 @@ type Server struct {
 	log *slog.Logger
 	mux *http.ServeMux
 	up  websocket.Upgrader
+	hub *Hub
 }
 
 // New builds a Server that logs through logger (which may be nil).
@@ -74,10 +76,15 @@ func New(logger *slog.Logger) *Server {
 		// Development server: both clients are local or on the LAN.
 		CheckOrigin: func(*http.Request) bool { return true },
 	}
+	s.hub = NewHub(logger, SnapshotRate)
+	s.hub.Start()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	return s
 }
+
+// Close stops background work (the snapshot broadcast loop).
+func (s *Server) Close() { s.hub.Close() }
 
 // Handler returns the root HTTP handler.
 func (s *Server) Handler() http.Handler { return s.mux }
@@ -104,6 +111,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	log := s.log.With("session", sessionID, "remote", r.RemoteAddr)
 	log.Info("client connected")
 	defer func() {
+		s.hub.Leave(sessionID)
 		_ = conn.Close()
 		log.Info("client disconnected")
 	}()
@@ -128,6 +136,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		"sessionId":       sessionID,
 		"serverVersion":   Version,
 		"protocolVersion": ProtocolVersion,
+		"snapshotRateMs":  SnapshotRate.Milliseconds(),
 		"serverTime":      time.Now().UnixMilli(),
 	})
 	if err != nil {
@@ -137,6 +146,14 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err := write(welcome); err != nil {
 		log.Warn("write welcome", "error", err)
 		return
+	}
+
+	writeError := func(seq int64, typ, text string) {
+		reply, err := NewMessage("error", seq, map[string]any{"message": text})
+		if err == nil {
+			_ = write(reply)
+		}
+		log.Warn("rejected message", "type", typ, "error", text)
 	}
 
 	for {
@@ -163,14 +180,53 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			log.Debug("ping", "seq", msg.Seq)
-		default:
-			reply, err := NewMessage("error", msg.Seq, map[string]any{
-				"message": "unknown message type: " + msg.Type,
-			})
-			if err == nil {
-				_ = write(reply)
+
+		case "join":
+			var body struct {
+				Client string `json:"client"`
+				Name   string `json:"name"`
 			}
-			log.Warn("unknown message type", "type", msg.Type, "seq", msg.Seq)
+			if len(msg.Body) > 0 {
+				if err := json.Unmarshal(msg.Body, &body); err != nil {
+					writeError(msg.Seq, msg.Type, "invalid join body: "+err.Error())
+					continue
+				}
+			}
+			if body.Client == "" {
+				body.Client = "unknown"
+			}
+			player := s.hub.Join(sessionID, body.Name, body.Client)
+			s.hub.Subscribe(sessionID, func(m Message) { _ = write(m) })
+
+			joined, err := NewMessage("joined", msg.Seq, map[string]any{
+				"playerId":        player.ID,
+				"name":            player.Name,
+				"protocolVersion": ProtocolVersion,
+				"snapshotRateMs":  SnapshotRate.Milliseconds(),
+			})
+			if err != nil {
+				log.Error("encode joined", "error", err)
+				return
+			}
+			if err := write(joined); err != nil {
+				log.Warn("write joined", "error", err)
+				return
+			}
+			log.Info("player joined", "player", player.ID, "client", player.Client, "name", player.Name)
+
+		case "move":
+			var state MoveState
+			if err := json.Unmarshal(msg.Body, &state); err != nil {
+				writeError(msg.Seq, msg.Type, "invalid move body: "+err.Error())
+				continue
+			}
+			if _, ok := s.hub.ApplyMove(sessionID, state); !ok {
+				writeError(msg.Seq, msg.Type, "join before move")
+				continue
+			}
+
+		default:
+			writeError(msg.Seq, msg.Type, "unknown message type: "+msg.Type)
 		}
 	}
 }
@@ -182,3 +238,4 @@ func newSessionID() string {
 	}
 	return hex.EncodeToString(b[:])
 }
+

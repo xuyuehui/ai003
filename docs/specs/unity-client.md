@@ -80,6 +80,14 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - `GatewayClient`：后台线程收发 + `ConcurrentQueue` 主线程消费；连接超时 10 s。
 - `ConnectionBootstrap`：场景加载前自动挂载，默认 `ws://127.0.0.1:8080/ws`，
   2 s 心跳、3 s 重连；地址可用 `AI003_WS_URL` 覆盖。
+- `ConnectionBootstrap` 把每一帧同时放进 `TryDequeueGameplay` 队列（上限 1024），
+  玩法代码在主线程排空；不要用事件订阅做同步，域重载会丢静态与订阅。
+- `WorldSyncClient`（自动挂载）：
+  - 连接后发 `join`（`client=unity`），10 Hz 发 `move`（脚底位置、yaw、速度、grounded、swimming）；
+  - 收到 `snapshot` 后为除自己外的玩家生成/更新 `RemoteAvatar`，断线时清空；
+  - 左下角 HUD 显示 `id / players / remote / ping`。
+- `RemoteAvatar`：位置与朝向按 12/s 指数平滑插值，按服务器 `anim` 驱动 Animator
+  （walk 用 Run 以 0.7 倍速播放，jump 切空中状态）。
 - 新增报文必须同步 Go 与 UE，并提升 `gateway.ProtocolVersion`。
 
 ## 7. 编辑器自动化与测试

@@ -41,6 +41,19 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - 连接建立先发 `welcome`；`ping` 必须原样回 `pong` 的 `seq`。
 - 单条消息读上限 64 KiB；写超时 10 s；空闲超时 90 s（改这些值要同步文档）。
 
+### 4.1 状态同步（协议 v2）
+
+- `internal/gateway/state.go` 维护权威玩家表：
+  - `Hub.Join/Leave` 增删玩家，`ApplyMove` 写入清洗后的状态，`Subscribe` 注册快照回调；
+  - 快照循环每 `SnapshotRate`（100 ms）跑一次，序列化一次后广播给所有订阅者；
+  - 坐标约定见 [protocol/README.md](../../protocol/README.md)：米、脚底、Unity 轴序。
+- 清洗规则写在 `sanitize`：`x/z` 夹到 ±1024 m、`y` 夹到 −200..600 m，非有限数归零，
+  `yaw` 归一化到 `[0,360)`，`speed` 夹到 `0..100`。
+- `anim` 由 `deriveAnim` 统一派生（swim > jump > run > walk > idle），客户端不再各算一套。
+- 快照广播用直接写回调，不引入额外队列；单机原型下玩家数量很小，慢客户端由写超时兜底。
+- 测试：`state_test.go` 覆盖清洗/动画派生/玩家表，`gateway_test.go` 覆盖
+  双人互见、位置同步、断线移除、未 join 先 move 被拒。
+
 ## 5. 世界生成
 
 - 完全确定性：同一 seed 逐字节一致。随机数用内置 `splitmix64`，**不用** `math/rand` 全局源。
