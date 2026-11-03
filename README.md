@@ -21,7 +21,7 @@
 
 | Unity 出生点视角 | UE5 出生点视角 | 世界俯视 |
 | --- | --- | --- |
-| ![Unity](artifacts/world-unity.png) | ![UE5](artifacts/world-ue5.png) | ![overview](artifacts/world-unity-overview.png) |
+| ![Unity](docs/images/world-unity.png) | ![UE5](docs/images/world-ue5.png) | ![overview](docs/images/world-overview.png) |
 
 > 上图是开发期渲染产物（`artifacts/` 默认被 git 忽略，用 `scripts/smoke-*.cmd` 重新生成）。
 > 两端光照/材质仍在打磨，UE 侧的色调偏灰、角色背光面偏暗，见"已知差异"。
@@ -67,6 +67,17 @@ ai003/
 | Visual Studio | 2022 17.14 + MSVC 14.44 | C++ 桌面工作负载 |
 
 细节（SDK、许可证、已知限制）见 [docs/environment.md](docs/environment.md)。
+
+## 工程规格
+
+每端有独立的实现规格与忽略规则，改代码前先看对应文档：
+
+| 部分 | 规格 | 忽略文件 |
+| --- | --- | --- |
+| 仓库级约定 | [docs/specs/README.md](docs/specs/README.md) | [.gitignore](.gitignore) |
+| Go 服务器 | [docs/specs/go-server.md](docs/specs/go-server.md) | [server/.gitignore](server/.gitignore) |
+| Unity 客户端 | [docs/specs/unity-client.md](docs/specs/unity-client.md) | [UnityGameClient/.gitignore](clients/unity/UnityGameClient/.gitignore) |
+| UE5 客户端 | [docs/specs/ue5-client.md](docs/specs/ue5-client.md) | [UE5GameClient/.gitignore](clients/ue5/UE5GameClient/.gitignore) |
 
 ## 世界数据与两端一致性
 

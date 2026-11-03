@@ -1,65 +1,20 @@
 # ---------------------------------------------------------------------------
-# AI003 — Unity 6 / Unreal Engine 5 / Go monorepo
+# AI003 monorepo — repository-wide ignores only.
+#
+# Component-specific rules live next to each part:
+#   clients/unity/UnityGameClient/.gitignore   Unity 6000.6
+#   clients/ue5/UE5GameClient/.gitignore       Unreal Engine 5.8
+#   server/.gitignore                          Go 1.26
 # ---------------------------------------------------------------------------
 
-# OS / editor noise
+# OS / IDE noise
 .DS_Store
 Thumbs.db
 desktop.ini
-*.log
-.tmp/
-artifacts/
 .idea/
 .vscode/
 
-# --- Go -------------------------------------------------------------------
-server/bin/
-server/*.exe
-server/*.test
-*.out
-coverage.*
-
-# --- Unity ----------------------------------------------------------------
-clients/unity/UnityGameClient/[Ll]ibrary/
-clients/unity/UnityGameClient/[Tt]emp/
-clients/unity/UnityGameClient/[Oo]bj/
-clients/unity/UnityGameClient/[Bb]uild/
-clients/unity/UnityGameClient/[Bb]uilds/
-clients/unity/UnityGameClient/[Ll]ogs/
-clients/unity/UnityGameClient/[Uu]ser[Ss]ettings/
-clients/unity/UnityGameClient/[Mm]emoryCaptures/
-clients/unity/UnityGameClient/[Rr]ecordings/
-clients/unity/UnityGameClient/*.csproj
-clients/unity/UnityGameClient/*.sln
-clients/unity/UnityGameClient/*.suo
-clients/unity/UnityGameClient/*.user
-clients/unity/UnityGameClient/*.userprefs
-clients/unity/UnityGameClient/*.pidb
-clients/unity/UnityGameClient/*.booproj
-clients/unity/UnityGameClient/*.svd
-clients/unity/UnityGameClient/*.pdb
-clients/unity/UnityGameClient/*.mdb
-clients/unity/UnityGameClient/*.opendb
-clients/unity/UnityGameClient/*.VC.db
-clients/unity/UnityGameClient/sysinfo.txt
-clients/unity/UnityGameClient/*.apk
-clients/unity/UnityGameClient/*.aab
-clients/unity/UnityGameClient/*.unitypackage
-
-# --- Unreal ---------------------------------------------------------------
-clients/ue5/UE5GameClient/[Bb]inaries/
-clients/ue5/UE5GameClient/[Dd]erivedDataCache/
-clients/ue5/UE5GameClient/[Ii]ntermediate/
-clients/ue5/UE5GameClient/[Ss]aved/
-clients/ue5/UE5GameClient/.vs/
-clients/ue5/UE5GameClient/*.sln
-clients/ue5/UE5GameClient/*.suo
-clients/ue5/UE5GameClient/*.opensdf
-clients/ue5/UE5GameClient/*.sdf
-clients/ue5/UE5GameClient/*.VC.db
-clients/ue5/UE5GameClient/*.VC.opendb
-clients/ue5/UE5GameClient/*.xcodeproj
-clients/ue5/UE5GameClient/*.xcworkspace
-
-# Third-party MCP plugin (EngineWire) - installed by scripts/install-enginewire.ps1; ~2.6 GB with build artifacts
-clients/ue5/UE5GameClient/Plugins/EngineWire/
+# Local scratch: screenshots, downloaded plugins, test output, stray logs
+artifacts/
+.tmp/
+*.log

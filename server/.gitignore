@@ -1,0 +1,20 @@
+# ---------------------------------------------------------------------------
+# Go 1.26 server. Build output only; the module must not carry binaries.
+# ---------------------------------------------------------------------------
+
+# Build output
+bin/
+*.exe
+*.test
+*.out
+coverage.*
+*.prof
+
+# Local configuration / secrets
+.env
+.env.local
+*.local.env
+
+# Editor noise
+.idea/
+.vscode/

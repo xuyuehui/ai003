@@ -1,0 +1,108 @@
+# Unity 客户端规格
+
+## 1. 基线
+
+| 项 | 值 |
+| --- | --- |
+| 编辑器 | Unity 6000.6.6f1（Tech Stream） |
+| 渲染 | URP 17.6.0，线性色彩空间 |
+| 序列化 | Force Text（`m_SerializationMode: 2`），提交所有 `.meta` |
+| 输入 | Input System 1.20.0（仅新输入，`activeInputHandler=1`） |
+| JSON | Newtonsoft 3.2.2 |
+| 测试 | Test Framework 1.8.0（builtin） |
+| 脚本后端 | Mono；IL2CPP 模块未装，发行前补 |
+
+## 2. 目录与程序集
+
+```
+Assets/Scripts/AI003.Runtime.asmdef    运行时（AI003.Runtime）
+  Net/       GatewayClient / ConnectionBootstrap / Envelope
+  World/     WorldData / WorldTerrain / WorldBootstrap
+  Player/    ThirdPersonController / OrbitCamera
+Assets/Editor/                         编辑器工具（Assembly-CSharp-Editor）
+Assets/Tests/PlayMode/                 AI003.PlayModeTests
+Assets/Shaders/                        AI003/TerrainVertexColor.shader
+Assets/Scenes/OpenWorld.unity          生成物（SetupWorldScene）
+Assets/StreamingAssets/world/          生成物（generate-world）
+```
+
+- 运行时脚本必须属于 `AI003.Runtime`；该程序集显式引用 `Unity.InputSystem`。
+- 命名空间：`AI003.Net`、`AI003.World`、`AI003.Player`、`AI003.EditorTools`、`AI003.Tests`。
+- 编辑器脚本不得进入运行时程序集；运行时脚本不得引用 `UnityEditor`。
+
+## 3. 代码规范
+
+- C# 9（Unity 默认），UTF-8、LF、4 空格。
+- 私有字段 `_camelCase`，公开成员 PascalCase，常量 PascalCase。
+- 每帧路径零分配：禁止 LINQ、字符串拼接、`GetComponent` 每帧调用。
+- 日志统一 `[AI003]` 前缀，只在状态变化时打印。
+- 跨线程规则：网络线程只入队，Unity API 只在主线程调用（见 `GatewayClient` 的队列设计）。
+- 可测试性：输入通过 `UseExternalInput/ExternalInput` 注入，物理测试不依赖键盘。
+
+## 4. 世界与渲染
+
+- 数据：`world.json` + `heightmap.f32` + `colors.rgba8` + `biomes.r8`，米制、Y 向上、行优先。
+- 地形：8×8 分块，每块 65×65 顶点；`MeshCollider` 非凸；法线由高度图中心差分。
+- 顶点色是世界文件里的**线性**值，直接进 shader，不做二次 sRGB 转换。
+- 地形材质 `AI003/TerrainVertexColor`（Forward + DepthOnly + DepthNormals + Fog + 阴影）；
+  水用 URP/Lit 透明；角色用 URP/Lit。
+- 水面：单四边形，边长 4×世界尺寸，位于 y = seaLevel。
+- 光照：一盏方向光（软阴影）+ 天空盒环境光；线性雾 320–2200 m。
+- 新增地形类型：改 Go 端调色板并重新生成，**不在客户端硬编码颜色**。
+
+## 5. 角色与物理
+
+| 参数 | 值 |
+| --- | --- |
+| 胶囊 | 高 1.8 m，半径 0.35 m |
+| 走 / 冲刺 / 游泳 | 6 / 10 / 3.2 m·s⁻¹ |
+| 跳跃 | 1.35 m |
+| 重力 | -24 m·s⁻² |
+| 可行走坡度 / 台阶 | 48° / 0.45 m |
+| 相机 | 第三人称环绕，距离 6.5 m，俯仰 -30..70°，地形遮挡收缩 |
+
+- 深水（水深 >1.6 m 且低于水面）切游泳浮力，目标水面下 0.85 m。
+- 参数只允许在角色/相机组件上调，不要在 `Update` 里写魔法数。
+
+## 6. 网络
+
+- 协议见 [protocol/README.md](../../protocol/README.md)，当前 v1（`welcome`/`ping`/`pong`/`error`）。
+- `GatewayClient`：后台线程收发 + `ConcurrentQueue` 主线程消费；连接超时 10 s。
+- `ConnectionBootstrap`：场景加载前自动挂载，默认 `ws://127.0.0.1:8080/ws`，
+  2 s 心跳、3 s 重连；地址可用 `AI003_WS_URL` 覆盖。
+- 新增报文必须同步 Go 与 UE，并提升 `gateway.ProtocolVersion`。
+
+## 7. 编辑器自动化与测试
+
+批处理入口（Unity 是 GUI 子系统，脚本必须 `Start-Process` 等待进程退出）：
+
+| 方法 | 作用 |
+| --- | --- |
+| `AI003.EditorTools.SetupWorldScene.Run` | 生成 `OpenWorld.unity` 并加入 Build Settings |
+| `AI003.EditorTools.WorldSmokeTest.Run` | 校验世界数据与分块网格 |
+| `AI003.EditorTools.RenderWorldPreview.Run` | 批处理模式离屏渲染截图 |
+| `AI003.EditorTools.EnableUnityMcp.Run` | 打开 MCP 自动启动（stdio 桥 6400） |
+
+- PlayMode 测试：`ConnectionBootstrapTests`、`WorldPlayModeTests`（落地 + 跑动）。
+- 改世界或角色物理后，至少跑 `scripts/test-unity-playmode.cmd`。
+
+## 8. 资产与版本控制
+
+- 提交所有 `.meta`；忽略 `Library/`、`Temp/`、`Build/`、`Logs/`、`UserSettings/` 等
+  （见 [.gitignore](../../clients/unity/UnityGameClient/.gitignore)）。
+- `OpenWorld.unity` 与 `StreamingAssets/world/` 是生成物：可提交，不要手改。
+- 新增第三方包写进 `Packages/manifest.json`，并提交 `packages-lock.json`。
+
+## 9. MCP
+
+- 包 `com.coplaydev.unity-mcp@10.3.0`，stdio 桥监听 `127.0.0.1:6400`。
+- 自动启动由 EditorPrefs 控制：`MCPForUnity.AutoStartOnLoad=true`、
+  `MCPForUnity.UseHttpTransport=false`。
+- 不要切 HTTP 模式：8080 是 Go 网关端口。详见 [../mcp.md](../mcp.md)。
+
+## 10. 完成定义
+
+1. 编辑器 0 编译错误、0 着色器错误；
+2. PlayMode 测试通过；
+3. `smoke-all` 的 `unity` / `unity-pm` 项 PASS；
+4. 角色参数与 UE 端保持一致（见 [ue5-client.md](ue5-client.md)）。

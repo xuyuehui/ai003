@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Unreal Engine 5.8 C++ project.
+#
+# Tracked on purpose:
+#   Config/**, Content/**, Source/**, WorldData/**, Scripts/**
+#
+# Third-party plugin EngineWire (UE MCP bridge) is ~2.6 GB once built and is
+# installed per machine with scripts/install-enginewire.ps1.
+# ---------------------------------------------------------------------------
+
+# Build artifacts
+[Bb]inaries/
+[Dd]erivedDataCache/
+[Ii]ntermediate/
+[Ss]aved/
+Build/
+Releases/
+
+# Third-party MCP plugin (recreate with scripts/install-enginewire.cmd)
+Plugins/EngineWire/
+
+# IDE / generated project files
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.xcodeproj
+*.xcworkspace
+
+# Local overrides / crash dumps
+*.user
+*.userprefs
+*.pdb
+*.mdb
+*.dmp
