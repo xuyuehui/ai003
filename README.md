@@ -48,7 +48,7 @@ ai003/
 ### 1. 启动服务器
 
 ```powershell
-pwsh scripts/build-server.ps1
+.\scripts\build-server.cmd
 .\server\bin\ai003-server.exe            # 监听 127.0.0.1:8080
 ```
 
@@ -77,7 +77,7 @@ cd server; go run ./cmd/pingclient -n 3  # 期望 SMOKE OK
 ### 3. UE5 客户端
 
 ```powershell
-.\scripts\smoke-ue5.ps1                 # 编译 Editor 目标 + 头less 冒烟
+.\scripts\smoke-ue5.cmd                 # 编译 Editor 目标 + 头less 冒烟
 # 或者只编译：
 & 'C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat' `
     UE5GameClientEditor Win64 Development `
@@ -90,8 +90,8 @@ cd server; go run ./cmd/pingclient -n 3  # 期望 SMOKE OK
 ### 4. 一键验证
 
 ```powershell
-pwsh scripts/smoke-all.ps1        # Go 测试 + pingclient + Unity + PlayMode + UE5
-pwsh scripts/smoke-all.ps1 -SkipUE # 只验 Unity 侧
+.\scripts\smoke-all.cmd            # Go 测试 + pingclient + Unity + PlayMode + UE5
+.\scripts\smoke-all.cmd -SkipUE    # 只验 Unity 侧
 ```
 
 脚本会自己拉起/关闭临时网关，最后打印汇总表。最近一次实测（2026-11-03）：
