@@ -60,3 +60,6 @@ clients/ue5/UE5GameClient/*.VC.db
 clients/ue5/UE5GameClient/*.VC.opendb
 clients/ue5/UE5GameClient/*.xcodeproj
 clients/ue5/UE5GameClient/*.xcworkspace
+
+# Third-party MCP plugin (EngineWire) - installed by scripts/install-enginewire.ps1; ~2.6 GB with build artifacts
+clients/ue5/UE5GameClient/Plugins/EngineWire/

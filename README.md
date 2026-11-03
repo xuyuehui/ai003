@@ -96,6 +96,22 @@ UE 的地形/水面/角色材质由 Python 在编辑器里生成一次（`/Game/
 .\scripts\setup-ue-assets.cmd
 ```
 
+## 引擎 MCP
+
+两个编辑器都已接好 MCP，AI 可以直接操作编辑器：
+
+| 引擎 | 服务 | 端口 | DSH server |
+| --- | --- | --- | --- |
+| Unreal Engine 5.8 | EngineWire 0.6.0（插件 + node 代理） | `3000` | `unreal-engine` |
+| Unity 6000.6.6f1 | MCP for Unity 10.3.0（UPM 包 + Python 服务） | `6400` | `unity` |
+
+```powershell
+.\scripts\check-mcp.cmd               # 检查两个桥是否在监听
+.\scripts\install-enginewire.cmd -Build   # 新机器：装 UE 插件并编译
+```
+
+安装细节、DSH 配置片段、token/超时/端口冲突的排查见 [docs/mcp.md](docs/mcp.md)。
+
 ## 操作方式
 
 | 操作 | 按键 |
@@ -199,6 +215,9 @@ ue5-world  PASS
 | `scripts/test-unity-playmode.ps1` | 跑 Unity PlayMode 测试（联网 + 世界/角色物理） |
 | `scripts/smoke-ue5.ps1` | UBT 编译 + `UnrealEditor-Cmd -game -nullrhi -AI003Smoke` |
 | `scripts/smoke-ue5-world.ps1` | UBT 编译 + `-AI003WorldSmoke`（地形构建 / 落地 / 跑动） |
+| `scripts/install-enginewire.ps1` | 下载并启用 EngineWire（UE MCP 插件），可选编译 |
+| `scripts/check-mcp.ps1` | 检查 UE 3000 / Unity 6400 两个 MCP 桥 |
+| `scripts/mcp-probe.mjs` | 最小 MCP stdio 客户端，用于列出某服务的工具 |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
