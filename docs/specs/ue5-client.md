@@ -99,6 +99,8 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 战斗表现：`DrawDebugBox` 画 ±20 m 边界；`attack` 事件让 `ARemotePlayer` 前冲
   （0.35 m 正弦），`hit` 触发缩放脉冲 + 红色 `DrawDebugSphere` + `DrawDebugString` 伤害数字，
   `death` 让远端沿 Pitch 倒地、`respawn` 恢复；正式特效留待接入资产后替换。
+- 对照截图：`-AI003DemoShot` 用固定机位（spawn − 6 m Y、+3.2 m Z，看向胸口）和
+  `artifacts/demo/ue5.png` 输出，供 `scripts/demo-compare.cmd` 与 Unity 合成。
 - 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
 
 ## 6. 材质

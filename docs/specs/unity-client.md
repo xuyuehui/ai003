@@ -125,6 +125,7 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 | `AI003.EditorTools.SetupWorldScene.Run` | 生成 `OpenWorld.unity` 并加入 Build Settings |
 | `AI003.EditorTools.WorldSmokeTest.Run` | 校验世界数据与分块网格 |
 | `AI003.EditorTools.RenderWorldPreview.Run` | 批处理模式离屏渲染截图 |
+| `AI003.EditorTools.CaptureDemoShot.Run` | 固定机位对照帧 → `artifacts/demo/unity.png` |
 | `AI003.EditorTools.EnableUnityMcp.Run` | 打开 MCP 自动启动（stdio 桥 6400） |
 
 - PlayMode 测试：`ConnectionBootstrapTests`、`WorldPlayModeTests`（落地 + 跑动）。

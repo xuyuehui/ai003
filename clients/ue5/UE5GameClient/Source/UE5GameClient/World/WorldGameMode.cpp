@@ -1,5 +1,6 @@
 #include "World/WorldGameMode.h"
 
+#include "Camera/CameraActor.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
@@ -9,6 +10,7 @@
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/SkyLight.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
@@ -35,12 +37,19 @@ void AWorldGameMode::InitGame(const FString& MapName, const FString& Options, FS
 
 	bWorldSmoke = FParse::Param(FCommandLine::Get(), TEXT("AI003WorldSmoke"));
 	bWorldShot = FParse::Param(FCommandLine::Get(), TEXT("AI003WorldShot"));
+	bDemoShot = FParse::Param(FCommandLine::Get(), TEXT("AI003DemoShot"));
 
 	if (bWorldShot)
 	{
 		FString Relative = FPaths::Combine(FPaths::ProjectDir(), TEXT("../../../artifacts/world-ue5.png"));
 		FPaths::CollapseRelativeDirectories(Relative);
 		ShotPath = FPaths::ConvertRelativePathToFull(Relative);
+	}
+	if (bDemoShot)
+	{
+		FString Relative = FPaths::Combine(FPaths::ProjectDir(), TEXT("../../../artifacts/demo/ue5.png"));
+		FPaths::CollapseRelativeDirectories(Relative);
+		DemoShotPath = FPaths::ConvertRelativePathToFull(Relative);
 	}
 
 	WorldData = MakeShared<FAI003WorldData>();
@@ -69,6 +78,10 @@ void AWorldGameMode::StartPlay()
 	if (bWorldSmoke || bWorldShot)
 	{
 		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginAutomation, 3.f, false);
+	}
+	else if (bDemoShot)
+	{
+		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginDemoShot, 3.f, false);
 	}
 }
 
@@ -163,6 +176,56 @@ void AWorldGameMode::SpawnEnvironment()
 			FogComponent->SetStartDistance(30000.f);
 		}
 	}
+}
+
+void AWorldGameMode::BeginDemoShot()
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		ExitWith(1);
+		return;
+	}
+
+	// Match the Unity capture: character at spawn, facing the demo camera,
+	// with the sun rotated to light that side.
+	if (AWorldCharacter* Character = Cast<AWorldCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		Character->SetActorLocation(SpawnLocation);
+		Character->SetActorRotation(FRotator(0.f, 270.f, 0.f));
+	}
+
+	// Front-light the character for the comparison: the demo camera is on -Y,
+	// so the sun is rotated to shine from that side.
+	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+	{
+		ADirectionalLight* Light = *It;
+		if (Light != nullptr)
+		{
+			Light->SetActorRotation(FRotator(-46.f, 90.f, 0.f));
+			break;
+		}
+	}
+
+	const FVector CameraLocation = SpawnLocation + FVector(0.f, -600.f, 320.f);
+	const FVector LookAt = SpawnLocation + FVector(0.f, 0.f, 120.f);
+	const FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
+
+	ACameraActor* Camera = World->SpawnActor<ACameraActor>(CameraLocation, CameraRotation);
+	if (Camera != nullptr)
+	{
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+		{
+			PC->SetViewTarget(Camera);
+		}
+	}
+
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(DemoShotPath), true);
+	FScreenshotRequest::RequestScreenshot(DemoShotPath, false, false);
+	UE_LOG(LogTemp, Display, TEXT("[AI003][DEMO-SHOT] requested %s"), *DemoShotPath);
+
+	GetWorldTimerManager().SetTimer(
+		AutomationTimer, FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 1.5f, false);
 }
 
 void AWorldGameMode::BeginAutomation()

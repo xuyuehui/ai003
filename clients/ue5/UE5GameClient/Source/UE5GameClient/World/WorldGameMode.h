@@ -16,6 +16,7 @@ struct FAI003WorldData;
  * Optional automation flags:
  *   -AI003WorldSmoke   verify the player spawned on the terrain and can run, then exit
  *   -AI003WorldShot    save artifacts/world-ue5.png and exit
+ *   -AI003DemoShot     fixed-camera frame for the Unity/UE comparison, then exit
  */
 UCLASS()
 class UE5GAMECLIENT_API AWorldGameMode : public AGameModeBase
@@ -33,6 +34,7 @@ private:
 	void SpawnEnvironment();
 
 	void BeginAutomation();
+	void BeginDemoShot();
 	void RunSmokeStage1();
 	void RunSmokeStage2();
 	void ExitWith(int32 Code);
@@ -46,7 +48,9 @@ private:
 
 	bool bWorldSmoke = false;
 	bool bWorldShot = false;
+	bool bDemoShot = false;
 	FString ShotPath;
+	FString DemoShotPath;
 	FTimerHandle AutomationTimer;
 	FVector SmokeStartLocation = FVector::ZeroVector;
 	TWeakObjectPtr<AWorldCharacter> SmokePlayer;

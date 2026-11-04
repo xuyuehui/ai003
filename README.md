@@ -52,6 +52,21 @@
 （见 [.github/workflows/verify.yml](.github/workflows/verify.yml)），基线保存在
 [demo/baseline.json](demo/baseline.json)。
 
+## 双端同机位对照
+
+```powershell
+.\scripts\demo-compare.cmd
+```
+
+固定相机（出生点后退 6 m、抬高 3.2 m，看向角色胸口，FOV 62）、同一世界、同一角色、
+同一朝向，Unity 用批处理离屏渲染、UE 用 `-AI003DemoShot`，再合成
+[docs/images/demo-compare.png](docs/images/demo-compare.png)。
+
+![Unity vs UE5](docs/images/demo-compare.png)
+
+当前曝光/色调/雾仍有差异（Unity 偏暗、UE 偏亮），已在"已知差异"中跟踪；机位、角色、
+地形形状已经可以逐像素对照。
+
 ## 已实现的技术点
 
 **里程碑 1：开放世界地形 + 角色跑动**（已完成）
@@ -319,7 +334,8 @@ ue5-world  PASS
 | `scripts/check-mcp.ps1` | 检查 UE 3000 / Unity 6400 两个 MCP 桥 |
 | `scripts/mcp-probe.mjs` | 最小 MCP stdio 客户端，用于列出某服务的工具 |
 | `scripts/demo-status.ps1` | 读 `/healthz` + `/demo`，打印房间/流量/事件指标（`-Json` 机器可读） |
-| `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标校验（不需要引擎） |
+| `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
+| `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧并合成对比图（`-SkipUnity` / `-SkipUE`） |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
@@ -343,8 +359,7 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | --- | --- | --- |
 | 离线冻结 | 离线玩家不可攻击、复活计时暂停，重连后继续 | 离线期间仍推进复活/冷却，或直接判负 |
 | 世界同步身份 | 大世界的 `join` 仍以会话 id 记玩家，重连会新建 | 世界玩家也改用 `clientId` 持久身份 |
-| 双端画面统一 | 同一世界与参数，但相机机位、光照/后处理未完全对齐 | 一键同机位截图 + 统一曝光/雾/后处理 |
-| 指标回归 | `/demo` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
+| 双端画面统一 | 已有 `demo-compare` 固定机位/角色；曝光、色调、雾仍不同 | 对齐曝光/色调/雾/天空，做像素级差异检查 || 指标回归 | `/demo` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
 | 预测范围 | 只预测位置/朝向；血量、冷却、命中仍等服务器帧 | 命中/受击也做预测 + 视觉反馈 |
 | 预测与分离 | 预测不含角色间分离，贴身推挤时校正次数偏高 | 在预测步进里加入确定性的角色分离 |
 | 竞技场表现 | 有围栏、前冲、伤害数字、倒地，但围栏无碰撞、非正式场景 | 独立竞技场场景与正式特效 |

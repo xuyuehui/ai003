@@ -1,0 +1,87 @@
+param(
+    [string]$Unity = 'C:\Program Files\Unity 6000.6.6f1\Editor\Unity.exe',
+    [string]$Engine = 'C:\Program Files\Epic Games\UE_5.8',
+    [switch]$SkipUnity,
+    [switch]$SkipUE,
+    [switch]$NoPublish
+)
+
+$ErrorActionPreference = 'Stop'
+
+$repo = Split-Path $PSScriptRoot -Parent
+$demoDir = Join-Path $repo 'artifacts\demo'
+$logs = Join-Path $repo 'artifacts\logs'
+New-Item -ItemType Directory -Force -Path $demoDir, $logs | Out-Null
+
+$unityShot = Join-Path $demoDir 'unity.png'
+$ueShot = Join-Path $demoDir 'ue5.png'
+$compare = Join-Path $demoDir 'compare.png'
+
+if (-not $SkipUnity) {
+    Write-Host '==> Unity demo frame (batch, fixed camera)' -ForegroundColor Cyan
+    $project = Join-Path $repo 'clients\unity\UnityGameClient'
+    $log = Join-Path $logs 'unity-demo-shot.log'
+    Remove-Item $unityShot -Force -ErrorAction SilentlyContinue
+    $process = Start-Process -FilePath $Unity -PassThru -NoNewWindow `
+        -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err" `
+        -ArgumentList @('-batchmode', '-projectPath', $project, '-executeMethod',
+            'AI003.EditorTools.CaptureDemoShot.Run', '-quit', '-logFile', $log)
+    if (-not $process.WaitForExit(600000)) { $process.Kill(); throw 'Unity demo shot timed out' }
+    if (-not (Test-Path $unityShot)) { throw "Unity demo shot missing: $unityShot (see $log)" }
+}
+
+if (-not $SkipUE) {
+    Write-Host '==> UE5 demo frame (fixed camera)' -ForegroundColor Cyan
+    $project = Join-Path $repo 'clients\ue5\UE5GameClient\UE5GameClient.uproject'
+    $editor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
+    Remove-Item $ueShot -Force -ErrorAction SilentlyContinue
+    $process = Start-Process -FilePath $editor -PassThru -NoNewWindow `
+        -RedirectStandardOutput (Join-Path $logs 'ue-demoshot.log') `
+        -RedirectStandardError (Join-Path $logs 'ue-demoshot.err') `
+        -ArgumentList @($project, '-game', '-windowed', '-ResX=1280', '-ResY=720',
+            '-nosplash', '-AI003DemoShot', '-log')
+    if (-not $process.WaitForExit(600000)) { $process.Kill(); throw 'UE demo shot timed out' }
+    if (-not (Test-Path $ueShot)) { throw "UE demo shot missing: $ueShot" }
+}
+
+Write-Host '==> composing side-by-side comparison' -ForegroundColor Cyan
+Add-Type -AssemblyName System.Drawing
+
+$left = [System.Drawing.Image]::FromFile($unityShot)
+$right = [System.Drawing.Image]::FromFile($ueShot)
+try {
+    $labelHeight = 36
+    $width = $left.Width + $right.Width
+    $height = [Math]::Max($left.Height, $right.Height) + $labelHeight
+    $canvas = New-Object System.Drawing.Bitmap $width, $height
+    $graphics = [System.Drawing.Graphics]::FromImage($canvas)
+    try {
+        $graphics.Clear([System.Drawing.Color]::FromArgb(18, 20, 24))
+        $graphics.DrawImage($left, 0, $labelHeight, $left.Width, $left.Height)
+        $graphics.DrawImage($right, $left.Width, $labelHeight, $right.Width, $right.Height)
+
+        $font = New-Object System.Drawing.Font('Segoe UI', 14, [System.Drawing.FontStyle]::Bold)
+        $brush = [System.Drawing.Brushes]::White
+        $graphics.DrawString('Unity 6 - URP', $font, $brush, 12, 8)
+        $graphics.DrawString('Unreal Engine 5.8', $font, $brush, ($left.Width + 12), 8)
+        $graphics.DrawLine([System.Drawing.Pens]::DimGray, $left.Width, 0, $left.Width, $height)
+
+        $canvas.Save($compare, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        $graphics.Dispose()
+        $canvas.Dispose()
+    }
+}
+finally {
+    $left.Dispose()
+    $right.Dispose()
+}
+
+Write-Host "compare: $compare"
+
+if (-not $NoPublish) {
+    $published = Join-Path $repo 'docs\images\demo-compare.png'
+    Copy-Item $compare $published -Force
+    Write-Host "published: $published"
+}

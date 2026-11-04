@@ -52,6 +52,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | --- | --- | --- |
 | 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
+| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色，输出 `docs/images/demo-compare.png`；曝光差异待收敛 |
 | 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
 | 客户端预测 | 看 HUD `pred / corr / 误差` | `pred = server + 3`，静止误差 0 |
 | 断线重连 | `ConnectionBootstrap.DebugDisconnect()` 或杀 UE | 30 s 内同 `roomId`/`playerId` 恢复 |
@@ -82,6 +83,7 @@ cd server; go build ./...; go vet ./...; go test ./... -count=1
 # 演示链路（需服务器已启动）
 .\scripts\demo-scenario.cmd -Seconds 8          # 与 demo/baseline.json 对比
 .\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
+.\scripts\demo-compare.cmd                      # 双端同机位对照（约 2 min）
 
 # 全链路（可选跳过引擎）
 .\scripts\smoke-all.cmd -SkipUnity -SkipUE
