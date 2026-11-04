@@ -11,7 +11,8 @@ param(
     [switch]$SkipUE,
     [switch]$SkipUEWorld,
     [switch]$SkipGoTests,
-    [switch]$SkipDemo
+    [switch]$SkipDemo,
+    [switch]$WithCompare
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,6 +107,13 @@ try {
     else {
         $results['ue5'] = 'SKIP'
         $results['ue5-world'] = 'SKIP'
+    }
+
+    if ($WithCompare) {
+        Write-Host '==> Demo compare (Unity vs UE5 fixed camera)' -ForegroundColor Cyan
+        & (Join-Path $scripts 'demo-compare.ps1') -MaxBrightnessDelta 8 -MinWithin24 80
+        if ($LASTEXITCODE -ne 0) { throw 'demo compare failed' }
+        $results['compare'] = 'PASS'
     }
 }
 finally {

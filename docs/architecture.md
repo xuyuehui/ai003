@@ -52,7 +52,8 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | --- | --- | --- |
 | 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
-| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 3.1、平均像素差 11.5/255 |
+| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 3.1、平均像素差 11.3/255、89.3% ≤24 |
+| 对照回归 | `smoke-all -WithCompare` | 亮度差 ≤8、像素差 ≤24 的占比 ≥80% 才算通过 |
 | 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
 | 客户端预测 | 看 HUD `pred / corr / 误差` | `pred = server + 3`，静止误差 0 |
 | 断线重连 | `ConnectionBootstrap.DebugDisconnect()` 或杀 UE | 30 s 内同 `roomId`/`playerId` 恢复 |
@@ -67,6 +68,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | `scripts\demo-status.cmd` | 上述指标的易读输出（`-Json` 机器可读） |
 | `cmd/democlient` | 无头客户端场景的 JSON 摘要：帧数、首末 tick、最大间隔、HP、事件 |
 | `demo/baseline.json` | 指标基线（帧率、tick 间隔、出拳/命中速率），`-UpdateBaseline` 更新 |
+| `artifacts/demo/diff.png` | 双端对照的差分热力图（黑=一致，红/黄=差异大） |
 | 客户端 HUD | `tick / pred / corr / 误差 / hp / fighters / roomId` |
 
 ## 6. 验证矩阵
@@ -84,6 +86,8 @@ cd server; go build ./...; go vet ./...; go test ./... -count=1
 .\scripts\demo-scenario.cmd -Seconds 8          # 与 demo/baseline.json 对比
 .\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
 .\scripts\demo-compare.cmd                      # 双端同机位对照（约 2 min）
+.\scripts\demo-compare.cmd -MaxBrightnessDelta 8 -MinWithin24 80   # 带阈值
+.\scripts\smoke-all.cmd -WithCompare -SkipPlayMode                 # 全链路含对照
 
 # 全链路（可选跳过引擎）
 .\scripts\smoke-all.cmd -SkipUnity -SkipUE

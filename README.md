@@ -64,9 +64,14 @@
 
 ![Unity vs UE5](docs/images/demo-compare.png)
 
-脚本会打印两帧的亮度与像素差异（当前 `Unity 108.6 / UE 105.5`，平均差 `11.5/255`，
-88.9% 像素差 ≤24）。Unity 侧用 ACES tonemapping + 程序化天空，UE 侧用后处理体积做固定
-曝光（Histogram，min=max=0.8 EV），机位、角色、地形轮廓与天空已对齐。
+脚本会打印两帧的亮度与像素差异（当前 `Unity 108.6 / UE 105.5`，平均差 `11.3/255`，
+89.3% 像素差 ≤24），并输出差分热力图：
+
+![Unity vs UE5 diff](docs/images/demo-diff.png)
+
+热力图中黑色表示一致、红/黄表示差异大：当前主要差异在天空渐变与角色边缘。
+`demo-compare` 支持阈值（`-MaxBrightnessDelta 8 -MinWithin24 80`），
+`smoke-all -WithCompare` 会用这组阈值做回归。
 
 ## 已实现的技术点
 
@@ -336,7 +341,7 @@ ue5-world  PASS
 | `scripts/mcp-probe.mjs` | 最小 MCP stdio 客户端，用于列出某服务的工具 |
 | `scripts/demo-status.ps1` | 读 `/healthz` + `/demo`，打印房间/流量/事件指标（`-Json` 机器可读） |
 | `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
-| `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧并合成对比图（`-SkipUnity` / `-SkipUE`） |
+| `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧、合成对比图与差分热力图，可设阈值 |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为

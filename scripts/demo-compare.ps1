@@ -3,7 +3,9 @@ param(
     [string]$Engine = 'C:\Program Files\Epic Games\UE_5.8',
     [switch]$SkipUnity,
     [switch]$SkipUE,
-    [switch]$NoPublish
+    [switch]$NoPublish,
+    [double]$MaxBrightnessDelta = 999,
+    [double]$MinWithin24 = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +18,7 @@ New-Item -ItemType Directory -Force -Path $demoDir, $logs | Out-Null
 $unityShot = Join-Path $demoDir 'unity.png'
 $ueShot = Join-Path $demoDir 'ue5.png'
 $compare = Join-Path $demoDir 'compare.png'
+$diffPath = Join-Path $demoDir 'diff.png'
 
 if (-not $SkipUnity) {
     Write-Host '==> Unity demo frame (batch, fixed camera)' -ForegroundColor Cyan
@@ -97,34 +100,100 @@ function Get-MeanBrightness([string]$path) {
     finally { $bitmap.Dispose() }
 }
 
+function Read-Pixels([string]$path) {
+    $bitmap = [System.Drawing.Bitmap]::FromFile($path)
+    try {
+        $rect = New-Object System.Drawing.Rectangle 0, 0, $bitmap.Width, $bitmap.Height
+        $data = $bitmap.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+        $stride = $data.Stride
+        try {
+            $bytes = New-Object byte[] ($stride * $bitmap.Height)
+            [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
+        }
+        finally { $bitmap.UnlockBits($data) }
+        return [pscustomobject]@{ Bytes = $bytes; Stride = $stride; Width = $bitmap.Width; Height = $bitmap.Height }
+    }
+    finally { $bitmap.Dispose() }
+}
+
 if ((Test-Path $unityShot) -and (Test-Path $ueShot)) {
     $unityMean = Get-MeanBrightness $unityShot
     $ueMean = Get-MeanBrightness $ueShot
     Write-Host ("brightness: Unity {0} / UE {1} (delta {2})" -f $unityMean, $ueMean, [Math]::Round($unityMean - $ueMean, 1))
 
-    $leftBitmap = [System.Drawing.Bitmap]::FromFile($unityShot)
-    $rightBitmap = [System.Drawing.Bitmap]::FromFile($ueShot)
+    # Full-resolution diff + heatmap (black = identical, red/yellow = large).
+    $leftPixels = Read-Pixels $unityShot
+    $rightPixels = Read-Pixels $ueShot
+    $width = [Math]::Min($leftPixels.Width, $rightPixels.Width)
+    $height = [Math]::Min($leftPixels.Height, $rightPixels.Height)
+    $samples = $width * $height
+
+    $heatmap = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $rect = New-Object System.Drawing.Rectangle 0, 0, $width, $height
+    $target = $heatmap.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::WriteOnly, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $heatStride = $target.Stride
+    $heat = New-Object byte[] ($heatStride * $height)
+
+    $diffSum = 0.0
+    $maxDiff = 0.0
+    $close = 0
+
     try {
-        $diffSum = 0.0
-        $samples = 0
-        $close = 0
-        $step = 8
-        for ($y = 0; $y -lt [Math]::Min($leftBitmap.Height, $rightBitmap.Height); $y += $step) {
-            for ($x = 0; $x -lt [Math]::Min($leftBitmap.Width, $rightBitmap.Width); $x += $step) {
-                $a = $leftBitmap.GetPixel($x, $y)
-                $b = $rightBitmap.GetPixel($x, $y)
-                $diff = ([Math]::Abs($a.R - $b.R) + [Math]::Abs($a.G - $b.G) + [Math]::Abs($a.B - $b.B)) / 3.0
+        for ($y = 0; $y -lt $height; $y++) {
+            $row = $y * $leftPixels.Stride
+            $outRow = $y * $heatStride
+            for ($x = 0; $x -lt $width; $x++) {
+                $i = $row + $x * 3
+                $db = [Math]::Abs([int]$leftPixels.Bytes[$i] - [int]$rightPixels.Bytes[$i])
+                $dg = [Math]::Abs([int]$leftPixels.Bytes[$i + 1] - [int]$rightPixels.Bytes[$i + 1])
+                $dr = [Math]::Abs([int]$leftPixels.Bytes[$i + 2] - [int]$rightPixels.Bytes[$i + 2])
+                $diff = ($db + $dg + $dr) / 3.0
+
                 $diffSum += $diff
-                $samples++
+                if ($diff -gt $maxDiff) { $maxDiff = $diff }
                 if ($diff -le 24) { $close++ }
+
+                if ($diff -lt 85) { $red = [int]($diff * 3); $green = 0 }
+                elseif ($diff -lt 170) { $red = 255; $green = [int](($diff - 85) * 3) }
+                else { $red = 255; $green = 255 }
+
+                $out = $outRow + $x * 3
+                $heat[$out] = 0
+                $heat[$out + 1] = [byte]$green
+                $heat[$out + 2] = [byte]$red
             }
         }
-        Write-Host ("pixel diff: mean {0:N1}/255   within 24: {1:N1}%   ({2} samples)" -f `
-            ($diffSum / $samples), (100.0 * $close / $samples), $samples)
+
+        [System.Runtime.InteropServices.Marshal]::Copy($heat, 0, $target.Scan0, $heat.Length)
     }
     finally {
-        $leftBitmap.Dispose()
-        $rightBitmap.Dispose()
+        $heatmap.UnlockBits($target)
+    }
+    $heatmap.Save($diffPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $heatmap.Dispose()
+
+    Write-Host ("pixel diff: mean {0:N1}/255  max {1:N0}  within 24: {2:N1}%  ({3} px)" -f `
+        ($diffSum / $samples), $maxDiff, (100.0 * $close / $samples), $samples)
+    Write-Host "diff heatmap: $diffPath"
+
+    $within24 = 100.0 * $close / $samples
+    $brightnessDelta = [Math]::Abs($unityMean - $ueMean)
+    $failed = @()
+    if ($brightnessDelta -gt $MaxBrightnessDelta) {
+        $failed += ("brightness delta {0:N1} > {1:N1}" -f $brightnessDelta, $MaxBrightnessDelta)
+    }
+    if ($within24 -lt $MinWithin24) {
+        $failed += ("within-24 {0:N1}% < {1:N1}%" -f $within24, $MinWithin24)
+    }
+    if ($failed.Count -gt 0) {
+        Write-Host ("compare thresholds failed: " + ($failed -join '; ')) -ForegroundColor Red
+        exit 1
+    }
+
+    if (-not $NoPublish) {
+        $publishedDiff = Join-Path $repo 'docs\images\demo-diff.png'
+        Copy-Item $diffPath $publishedDiff -Force
+        Write-Host "published diff: $publishedDiff"
     }
 }
 
