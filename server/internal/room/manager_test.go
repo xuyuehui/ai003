@@ -66,6 +66,24 @@ func TestManagerLeaveFreesSlot(t *testing.T) {
 	}
 }
 
+func TestManagerReconnectReturnsToSameRoom(t *testing.T) {
+	m := NewManager(2)
+	first, _, err := m.Enter("", "p1", "A")
+	if err != nil {
+		t.Fatalf("enter: %v", err)
+	}
+	m.Enter("", "p2", "B")
+	m.MarkOffline(first, "p1")
+
+	roomID, _, err := m.Enter("", "p1", "A")
+	if err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	if roomID != first {
+		t.Fatalf("reconnect room = %q, want %q", roomID, first)
+	}
+}
+
 func TestManagerStepOnlyKnownRoom(t *testing.T) {
 	m := NewManager(2)
 	if _, ok := m.Step("nope"); ok {

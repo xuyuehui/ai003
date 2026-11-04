@@ -67,10 +67,13 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 ### `join`（客户端 → 服务器）
 
 ```json
-{ "type": "join", "seq": 1, "body": { "client": "unity", "name": "Alice" } }
+{ "type": "join", "seq": 1, "body": { "client": "unity", "name": "Alice", "clientId": "9f2c…" } }
 ```
 
 `client` 取值：`unity`、`ue5`；`name` 可省略（默认等于 `client`）。
+
+`clientId` 是客户端**持久身份**（Unity 存 `PlayerPrefs`，UE 存 `Saved/ClientId.txt`）。
+省略时服务器退回会话 id。房间按 `clientId` 记玩家，所以断线重连能回到原角色。
 
 ### `joined`（服务器 → 客户端）
 
@@ -87,7 +90,7 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 }
 ```
 
-`playerId` 当前等于会话 id；未 `join` 就发 `move` 会收到 `error`。
+`playerId` 当前等于 `clientId`（或会话 id）；未 `join` 就发 `move` 会收到 `error`。
 
 ### `move`（客户端 → 服务器，建议 10 Hz）
 
@@ -154,12 +157,13 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 ### `room.enter`（客户端 → 服务器）
 
 ```json
-{ "type": "room.enter", "seq": 31, "body": { "name": "Alice", "room": "arena-2" } }
+{ "type": "room.enter", "seq": 31, "body": { "name": "Alice", "room": "arena-2", "clientId": "9f2c…" } }
 ```
 
 `room` 可省略：省略时由服务器**自动匹配**——放进人数最少且有位的房间，都满则新建
 `arena-N`（默认容量 8）。指定不存在的 `room` 会按需创建；满房返回
-`error: "arena-2: room full"`。重复进入同一房间会重置该玩家（满血、回到出生槽位）。
+`error: "arena-2: room full"`。重复进入同一房间会重置该玩家（满血、回到出生槽位）；
+**离线状态**下重连同一 `clientId` 不会重置，而是恢复血量/位置/槽位。
 服务器按槽位分配出生点（0,0）、(4 m,0)、(-4 m,0)…
 
 ### `room.list`（客户端 → 服务器 / 服务器 → 客户端）
@@ -238,6 +242,16 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 { "type": "room.leave", "seq": 40, "body": {} }
 ```
 
+显式离开会**立即**移除玩家；断线不会。
+
+### 断线与重连
+
+- 连接断开时玩家被标记为 `offline`，状态保留 **30 s（600 ticks）**。
+- 离线玩家仍在 `room.frame` 里（`offline: true`），但不可被攻击、不移动，复活计时暂停。
+- 宽限期内用同一 `clientId` 重新 `room.enter`：回到原房间，恢复血量/位置/槽位，**不重置**。
+- 超过宽限期：从房间移除；房间满员时也不再占位。
+- 客户端地址/会话都变了也没关系，身份只看 `clientId`。
+
 ### 战斗规则（确定性）
 
 | 项 | 值 |
@@ -252,6 +266,7 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 | 生命 / 复活 | 100 / 死亡后 60 ticks（3 s）在出生槽位满血复活 |
 | 角色半径 / 分离 | 400 mm；重叠时沿主轴每 tick 各推开 20 mm |
 | 房间容量 | 8 人 |
+| 断线宽限 | 600 ticks（30 s），期内重连恢复状态 |
 
 ## 冒烟与验收
 
@@ -269,6 +284,9 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 
 房间：两个客户端 `room.enter` 后收到同一 `room.frame`，输入在下一 tick 生效；一方攻击命中后
 另一方的 `hp` 下降 25，命中/死亡/复活事件在所有客户端一致；退出后从下一帧消失。
+
+重连：断开后 30 s 内用同一 `clientId` 重新进房，回到原 `roomId` 且 `playerId`/血量/位置不变；
+超过 30 s 后该玩家从帧里消失。
 
 ## 版本演进
 

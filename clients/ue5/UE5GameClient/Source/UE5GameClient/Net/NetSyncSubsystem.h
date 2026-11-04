@@ -50,6 +50,7 @@ private:
 	void SendRoomInput();
 	void EnterRoom(const TSharedPtr<FJsonObject>& Body);
 	void ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body);
+	static FString LoadOrCreateClientId();
 	class AWorldCharacter* LocalCharacter() const;
 	FVector RoomToWorld(double XMeters, double ZMeters) const;
 
@@ -62,6 +63,7 @@ private:
 
 	FString Endpoint = TEXT("ws://127.0.0.1:8080/ws");
 	FString PlayerId;
+	FString ClientID;
 	int32 NextSeq = 0;
 
 	double NextSendAt = 0.0;

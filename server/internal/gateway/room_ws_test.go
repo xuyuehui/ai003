@@ -130,6 +130,45 @@ func TestRoomInputBeforeEnterIsRejected(t *testing.T) {
 	}
 }
 
+func TestRoomReconnectKeepsPlayer(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	first := dial(t, httpServer.URL)
+	readWelcome(t, first)
+	roomID, playerID := enterRoomAs(t, first, 10, "client-1")
+	if playerID != "client-1" {
+		t.Fatalf("playerId = %q, want client-1", playerID)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first: %v", err)
+	}
+
+	// Give the server a moment to process the disconnect (marks offline).
+	time.Sleep(150 * time.Millisecond)
+
+	second := dial(t, httpServer.URL)
+	readWelcome(t, second)
+	reconnectedRoom, reconnectedID := enterRoomAs(t, second, 20, "client-1")
+	if reconnectedRoom != roomID || reconnectedID != playerID {
+		t.Fatalf("reconnect = (%q,%q), want (%q,%q)", reconnectedRoom, reconnectedID, roomID, playerID)
+	}
+
+	frame := waitRoomFrame(t, second, 3*time.Second, func(f room.Frame) bool {
+		for _, p := range f.Players {
+			if p.ID == playerID && !p.Offline {
+				return true
+			}
+		}
+		return false
+	})
+	if len(frame.Players) != 1 {
+		t.Fatalf("players after reconnect = %+v", frame.Players)
+	}
+}
+
 func TestRoomListReportsRooms(t *testing.T) {
 	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer server.Close()
@@ -175,8 +214,20 @@ func TestRoomListReportsRooms(t *testing.T) {
 
 func enterRoom(t *testing.T, conn messageReader, seq int64) string {
 	t.Helper()
+	_, playerID := enterRoomAs(t, conn, seq, "")
+	return playerID
+}
 
-	enter, err := NewMessage("room.enter", seq, map[string]string{"name": "tester"})
+// enterRoomAs joins with an explicit persistent client id ("" = session id) and
+// returns the room id and player id.
+func enterRoomAs(t *testing.T, conn messageReader, seq int64, clientID string) (string, string) {
+	t.Helper()
+
+	body := map[string]string{"name": "tester"}
+	if clientID != "" {
+		body["clientId"] = clientID
+	}
+	enter, err := NewMessage("room.enter", seq, body)
 	if err != nil {
 		t.Fatalf("build room.enter: %v", err)
 	}
@@ -198,14 +249,15 @@ func enterRoom(t *testing.T, conn messageReader, seq int64) string {
 		}
 		var body struct {
 			PlayerID string `json:"playerId"`
+			RoomID   string `json:"roomId"`
 		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil || body.PlayerID == "" {
 			t.Fatalf("room.entered body = %s (%v)", msg.Body, err)
 		}
-		return body.PlayerID
+		return body.RoomID, body.PlayerID
 	}
 	t.Fatal("no room.entered message")
-	return ""
+	return "", ""
 }
 
 func waitRoomFrame(t *testing.T, conn messageReader, timeout time.Duration, pred func(room.Frame) bool) room.Frame {

@@ -65,13 +65,18 @@ internal/worldgen/   地形/群系/颜色 + 测试
   都满则新建 `arena-N`；指定房间满员返回 `ErrRoomFull`。房间不自动销毁（原型期复用）。
 - `gateway` 起一个 20 Hz 循环遍历 `Manager.RoomIDs()`，逐房 `Step` 并只向该房订阅者广播
   `room.frame`；`room.enter`/`room.input`/`room.leave`/`room.list` 在连接读循环里处理，
-  会话到房间的映射存在 `sessions`。
+  会话到 `{clientID, roomID}` 的映射存在 `sessions`。
+- 身份：`join`/`room.enter` 可带 `clientId`（≤64 字符），缺省退回会话 id；房间按它记玩家。
+- 断线：defer 里对房间调用 `MarkOffline`（保留 600 ticks = 30 s），显式 `room.leave` 才
+  `Leave` 立即移除；宽限内同 `clientId` 再次 `room.enter` 会复活原角色（不重置血量/位置/槽位），
+  `Manager.Enter` 会先按玩家找回原房间并绕过容量检查。
 - `room.entered` 下发全部模拟常量（tickRate、场地半宽、速度、攻击范围/伤害/冷却、
   最大 HP、复活时间、攻击按键位），客户端不得写死。
-- 掉线即 `Leave`；空房保留但循环不广播。
-- 测试：`room_test.go` 覆盖移动/夹取/斜向不加速/锥角/冷却/死亡/复活/分离/确定性，
-  `manager_test.go` 覆盖自动匹配、容量、满房、离开腾位、列表；
-  `room_ws_test.go` 覆盖双人同帧、输入生效、离开移除、未进入先输入被拒、`room.list`。
+- 掉线即 `MarkOffline`；空房保留但循环不广播。
+- 测试：`room_test.go` 覆盖移动/夹取/斜向不加速/锥角/冷却/死亡/复活/分离/确定性/
+  **重连保留状态/宽限到期/离线不可被攻击**，`manager_test.go` 覆盖自动匹配、容量、满房、
+  离开腾位、列表、**重连回原房间**；`room_ws_test.go` 覆盖双人同帧、输入生效、离开移除、
+  未进入先输入被拒、`room.list`、**同 clientId 重连**。
 
 ## 5. 世界生成
 

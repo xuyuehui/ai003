@@ -85,6 +85,14 @@ namespace AI003.Net
             }
         }
 
+        /// <summary>Test hook: drops the socket so the reconnect path can be exercised.</summary>
+        public void DebugDisconnect()
+        {
+            DisposeClient();
+            _nextReconnectAt = Time.unscaledTime + 0.5f;
+            Debug.Log("[AI003] debug disconnect requested");
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoInstall()
         {

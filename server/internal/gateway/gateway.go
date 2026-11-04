@@ -69,10 +69,16 @@ type Server struct {
 	rooms    *room.Manager
 	roomMu   sync.Mutex
 	roomSubs map[string]roomSub
-	sessions map[string]string // session id -> room id
+	sessions map[string]sessionInfo // session id -> identity + room
 
 	stop     chan struct{}
 	stopOnce sync.Once
+}
+
+// sessionInfo ties a websocket session to the client's persistent id and room.
+type sessionInfo struct {
+	clientID string
+	roomID   string
 }
 
 // roomSub is one connection's subscription to a specific room.
@@ -97,7 +103,7 @@ func New(logger *slog.Logger) *Server {
 	s.hub.Start()
 	s.rooms = room.NewManager(room.DefaultCapacity)
 	s.roomSubs = make(map[string]roomSub)
-	s.sessions = make(map[string]string)
+	s.sessions = make(map[string]sessionInfo)
 	s.stop = make(chan struct{})
 	go s.roomLoop()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -152,15 +158,22 @@ func (s *Server) roomLoop() {
 	}
 }
 
-func (s *Server) leaveRoom(id string) {
+// leaveRoom detaches a session. A permanent leave removes the player; a plain
+// disconnect only marks it offline so a reconnect can resume within the grace.
+func (s *Server) leaveRoom(id string, permanent bool) {
 	s.roomMu.Lock()
-	roomID := s.sessions[id]
+	info := s.sessions[id]
 	delete(s.sessions, id)
 	delete(s.roomSubs, id)
 	s.roomMu.Unlock()
 
-	if roomID != "" {
-		s.rooms.Leave(roomID, id)
+	if info.roomID == "" {
+		return
+	}
+	if permanent {
+		s.rooms.Leave(info.roomID, info.clientID)
+	} else {
+		s.rooms.MarkOffline(info.roomID, info.clientID)
 	}
 }
 
@@ -186,10 +199,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := newSessionID()
+	clientID := sessionID
 	log := s.log.With("session", sessionID, "remote", r.RemoteAddr)
 	log.Info("client connected")
 	defer func() {
-		s.leaveRoom(sessionID)
+		s.leaveRoom(sessionID, false)
 		s.hub.Leave(sessionID)
 		_ = conn.Close()
 		log.Info("client disconnected")
@@ -262,14 +276,22 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 		case "join":
 			var body struct {
-				Client string `json:"client"`
-				Name   string `json:"name"`
+				Client   string `json:"client"`
+				Name     string `json:"name"`
+				ClientID string `json:"clientId"`
 			}
 			if len(msg.Body) > 0 {
 				if err := json.Unmarshal(msg.Body, &body); err != nil {
 					writeError(msg.Seq, msg.Type, "invalid join body: "+err.Error())
 					continue
 				}
+			}
+			if body.ClientID != "" {
+				if len(body.ClientID) > 64 {
+					writeError(msg.Seq, msg.Type, "clientId too long")
+					continue
+				}
+				clientID = body.ClientID
 			}
 			if body.Client == "" {
 				body.Client = "unknown"
@@ -306,8 +328,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 		case "room.enter":
 			var body struct {
-				Name string `json:"name"`
-				Room string `json:"room"`
+				Name     string `json:"name"`
+				Room     string `json:"room"`
+				ClientID string `json:"clientId"`
 			}
 			if len(msg.Body) > 0 {
 				if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -315,8 +338,15 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
+			if body.ClientID != "" {
+				if len(body.ClientID) > 64 {
+					writeError(msg.Seq, msg.Type, "clientId too long")
+					continue
+				}
+				clientID = body.ClientID
+			}
 
-			roomID, state, err := s.rooms.Enter(body.Room, sessionID, body.Name)
+			roomID, state, err := s.rooms.Enter(body.Room, clientID, body.Name)
 			if err != nil {
 				writeError(msg.Seq, msg.Type, err.Error())
 				continue
@@ -324,13 +354,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			tick, players, _ := s.rooms.Snapshot(roomID)
 
 			s.roomMu.Lock()
-			s.sessions[sessionID] = roomID
+			s.sessions[sessionID] = sessionInfo{clientID: clientID, roomID: roomID}
 			s.roomSubs[sessionID] = roomSub{roomID: roomID, send: func(m Message) { _ = write(m) }}
 			s.roomMu.Unlock()
 
 			entered, err := NewMessage("room.entered", msg.Seq, map[string]any{
 				"roomId":              roomID,
-				"playerId":            sessionID,
+				"playerId":            clientID,
 				"tick":                tick,
 				"state":               state,
 				"players":             players,
@@ -354,7 +384,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				log.Warn("write room.entered", "error", err)
 				return
 			}
-			log.Info("room entered", "player", sessionID, "room", roomID, "tick", tick)
+			log.Info("room entered", "player", clientID, "session", sessionID, "room", roomID, "tick", tick)
 
 		case "room.input":
 			var in room.Input
@@ -363,13 +393,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			s.roomMu.Lock()
-			roomID := s.sessions[sessionID]
+			info := s.sessions[sessionID]
 			s.roomMu.Unlock()
-			if roomID == "" {
+			if info.roomID == "" {
 				writeError(msg.Seq, msg.Type, "room.enter before room.input")
 				continue
 			}
-			if !s.rooms.SetInput(roomID, sessionID, in) {
+			if !s.rooms.SetInput(info.roomID, info.clientID, in) {
 				writeError(msg.Seq, msg.Type, "room.input for unknown player")
 				continue
 			}
@@ -387,14 +417,14 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 		case "room.leave":
 			s.roomMu.Lock()
-			roomID := s.sessions[sessionID]
+			info := s.sessions[sessionID]
 			s.roomMu.Unlock()
-			s.leaveRoom(sessionID)
-			left, err := NewMessage("room.left", msg.Seq, map[string]any{"roomId": roomID})
+			s.leaveRoom(sessionID, true)
+			left, err := NewMessage("room.left", msg.Seq, map[string]any{"roomId": info.roomID})
 			if err == nil {
 				_ = write(left)
 			}
-			log.Info("room left", "player", sessionID, "room", roomID)
+			log.Info("room left", "player", info.clientID, "room", info.roomID)
 
 		default:
 			writeError(msg.Seq, msg.Type, "unknown message type: "+msg.Type)

@@ -48,6 +48,7 @@ namespace AI003.Net
         private float _nextSend;
         private float _nextEnter;
         private bool _enabled;
+        private bool _needsReenter;
 
         private Vector3 _center;
         private float _groundY;
@@ -118,7 +119,19 @@ namespace AI003.Net
 
             if (!_connection.IsConnected)
             {
-                if (InRoom) LeaveLocal();
+                // Keep the arena state; the server holds it for 30 s and a
+                // reconnect with the same clientId resumes the same fighter.
+                if (InRoom) _needsReenter = true;
+                return;
+            }
+
+            if (InRoom && _needsReenter)
+            {
+                if (Time.unscaledTime >= _nextEnter)
+                {
+                    _nextEnter = Time.unscaledTime + 1f;
+                    SendEnter();
+                }
                 return;
             }
 
@@ -150,7 +163,11 @@ namespace AI003.Net
 
         private void SendEnter()
         {
-            var body = new JObject { ["name"] = ClientName };
+            var body = new JObject
+            {
+                ["name"] = ClientName,
+                ["clientId"] = ClientIdentity.Id
+            };
             _connection.Send(new Envelope { Type = "room.enter", Seq = _connection.NextSeq(), Body = body });
         }
 
@@ -208,16 +225,19 @@ namespace AI003.Net
         {
             if (body == null) return;
 
+            bool wasInRoom = InRoom;
             _playerId = body["playerId"]?.ToString();
             RoomId = body["roomId"]?.ToString() ?? "";
             _tickRate = body["tickRate"]?.Value<int>() ?? 20;
             _sendInterval = 1f / Mathf.Max(1, _tickRate);
             _arenaHalfMeters = (body["arenaHalfMM"]?.Value<float>() ?? 20000f) / 1000f;
             MaxHP = body["maxHP"]?.Value<int>() ?? 100;
-            HP = MaxHP;
+            var state = body["state"] as JObject;
+            HP = state?["hp"]?.Value<int>() ?? MaxHP;
+            Dead = state != null && !(state["alive"]?.Value<bool>() ?? true);
 
             _local = FindFirstObjectByType<ThirdPersonController>();
-            if (_local != null)
+            if (_local != null && !wasInRoom)
             {
                 _center = _local.transform.position;
                 _groundY = _center.y;
@@ -226,8 +246,12 @@ namespace AI003.Net
                 _localAnimator = _local.GetComponentInChildren<Animator>();
             }
 
-            WorldSyncClient.EnsureExists().Suspend();
+            if (!wasInRoom)
+            {
+                WorldSyncClient.EnsureExists().Suspend();
+            }
 
+            _needsReenter = false;
             InRoom = true;
             AnyActive = true;
             Tick = body["tick"]?.Value<int>() ?? 0;

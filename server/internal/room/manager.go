@@ -51,17 +51,41 @@ func (m *Manager) Enter(roomID, playerID, name string) (string, State, error) {
 	defer m.mu.Unlock()
 
 	if roomID == "" {
-		roomID = m.pickRoomLocked()
+		if existing, ok := m.findPlayerLocked(playerID); ok {
+			roomID = existing
+		} else {
+			roomID = m.pickRoomLocked()
+		}
 	} else if _, ok := m.rooms[roomID]; !ok {
 		m.createLocked(roomID)
 	}
 
 	r := m.rooms[roomID]
-	if r.Count() >= m.capacity {
+	if !r.Has(playerID) && r.Count() >= m.capacity {
 		return "", State{}, fmt.Errorf("%s: %w", roomID, ErrRoomFull)
 	}
 	state := r.Enter(playerID, name)
 	return roomID, state, nil
+}
+
+// MarkOffline keeps the player in its room for DisconnectGraceTicks.
+func (m *Manager) MarkOffline(roomID, playerID string) {
+	m.mu.Lock()
+	r, ok := m.rooms[roomID]
+	m.mu.Unlock()
+	if ok {
+		r.MarkOffline(playerID)
+	}
+}
+
+// findPlayerLocked returns the room holding the player (online or offline).
+func (m *Manager) findPlayerLocked(playerID string) (string, bool) {
+	for _, id := range m.order {
+		if m.rooms[id].Has(playerID) {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // Leave removes the player from a room; empty rooms are kept for reuse.

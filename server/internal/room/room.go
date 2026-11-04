@@ -32,6 +32,8 @@ const (
 	MaxHP = 100
 	// RespawnTicks is 3 s at 20 Hz.
 	RespawnTicks = 60
+	// DisconnectGraceTicks keeps an offline player's state for 30 s.
+	DisconnectGraceTicks = 30 * TickRate
 )
 
 // Input is one player's command for a tick.
@@ -56,6 +58,10 @@ type Player struct {
 	Cooldown int
 	Respawn  int // ticks until respawn; 0 means alive
 	Input    Input
+	// Offline is set when the socket drops: the state is kept for
+	// DisconnectGraceTicks so a reconnect can resume, then the player is removed.
+	Offline      bool
+	OfflineTicks int
 }
 
 // State is the per-player snapshot carried by a frame.
@@ -69,6 +75,7 @@ type State struct {
 	HP      int    `json:"hp"`
 	Alive   bool   `json:"alive"`
 	Slot    int    `json:"slot"`
+	Offline bool   `json:"offline,omitempty"`
 }
 
 // Event describes something that happened during a tick.
@@ -135,13 +142,22 @@ func (r *Room) Tick() uint64 {
 	return r.tick
 }
 
-// Enter adds a player and returns its initial state. Re-entering keeps the slot
-// and resets health/position.
+// Enter adds a player and returns its state. An offline player (reconnect) is
+// revived with its previous HP/position/slot; an online re-enter resets it.
 func (r *Room) Enter(id, name string) State {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if p, ok := r.players[id]; ok {
+		if p.Offline {
+			p.Offline = false
+			p.OfflineTicks = 0
+			p.Input = Input{}
+			if name != "" {
+				p.Name = name
+			}
+			return stateOf(p)
+		}
 		r.reset(p)
 		return stateOf(p)
 	}
@@ -168,11 +184,36 @@ func (r *Room) Enter(id, name string) State {
 	return stateOf(p)
 }
 
-// Leave removes a player.
-func (r *Room) Leave(id string) {
+// Has reports whether the player is in the room (online or offline).
+func (r *Room) Has(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.players[id]
+	return ok
+}
+
+// MarkOffline keeps the player's state for DisconnectGraceTicks.
+func (r *Room) MarkOffline(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	p, ok := r.players[id]
+	if !ok || p.Offline {
+		return
+	}
+	p.Offline = true
+	p.OfflineTicks = DisconnectGraceTicks
+	p.Input = Input{}
+}
+
+// Leave removes a player immediately (explicit room.leave).
+func (r *Room) Leave(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.removeLocked(id)
+}
+
+func (r *Room) removeLocked(id string) {
 	if _, ok := r.players[id]; !ok {
 		return
 	}
@@ -227,6 +268,13 @@ func (r *Room) Step() Frame {
 
 	for _, id := range r.order {
 		p := r.players[id]
+		if p.Offline {
+			p.OfflineTicks--
+			if p.OfflineTicks <= 0 {
+				r.removeLocked(id)
+			}
+			continue
+		}
 		frame.Inputs[id] = p.Input
 		r.stepPlayer(p, &frame.Events)
 	}
@@ -246,12 +294,12 @@ func (r *Room) separate() {
 
 	for i := 0; i < len(r.order); i++ {
 		a := r.players[r.order[i]]
-		if a.Respawn > 0 {
+		if a.Respawn > 0 || a.Offline {
 			continue
 		}
 		for j := i + 1; j < len(r.order); j++ {
 			b := r.players[r.order[j]]
-			if b.Respawn > 0 {
+			if b.Respawn > 0 || b.Offline {
 				continue
 			}
 
@@ -339,7 +387,7 @@ func (r *Room) pickTarget(p *Player) *Player {
 	var best *Player
 	var bestDist int64
 	for _, other := range r.players {
-		if other.ID == p.ID || other.Respawn > 0 {
+		if other.ID == p.ID || other.Respawn > 0 || other.Offline {
 			continue
 		}
 		dx := other.X - p.X
@@ -394,6 +442,7 @@ func stateOf(p *Player) State {
 		HP:      p.HP,
 		Alive:   p.Respawn == 0,
 		Slot:    p.Slot,
+		Offline: p.Offline,
 	}
 }
 

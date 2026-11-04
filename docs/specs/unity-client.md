@@ -101,8 +101,12 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 模拟常量全部来自 `room.entered`，不要在客户端写死速度/伤害/冷却。
 - 房间号来自 `room.entered.roomId`（服务器自动匹配或按 `room` 指定），HUD 显示；
   满房/错误只会打日志，客户端每秒重试进房。
-- 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)` 直接发一帧输入。
-- 已知限制：竞技场叠加在出生点草地上，本地移动为服务器帧回放不是预测；断线即离房。
+- 持久身份 `ClientIdentity.Id`（`PlayerPrefs: AI003.ClientId`，首次生成 GUID），
+  `join` 与 `room.enter` 都会带上；断线时 `RoomClient` 不销毁战斗状态，重连后自动重发
+  `room.enter`，服务器按 `clientId` 恢复原角色（30 s 宽限）。
+- 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)` 直接发一帧输入；
+  `ConnectionBootstrap.DebugDisconnect()` 主动断开以验证重连。
+- 已知限制：竞技场叠加在出生点草地上，本地移动为服务器帧回放不是预测。
 
 ## 7. 编辑器自动化与测试
 

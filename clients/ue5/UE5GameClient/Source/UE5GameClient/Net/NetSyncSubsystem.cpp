@@ -10,7 +10,10 @@
 #include "IWebSocket.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
 #include "Misc/Parse.h"
+#include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "Net/RemotePlayer.h"
 #include "Serialization/JsonReader.h"
@@ -39,6 +42,7 @@ void UNetSyncSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	FParse::Value(FCommandLine::Get(), TEXT("AI003Url="), Endpoint);
 	bRoomEnabled = FParse::Param(FCommandLine::Get(), TEXT("AI003Room"));
 	bRoomBot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomBot"));
+	ClientID = LoadOrCreateClientId();
 
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
 	{
@@ -128,6 +132,7 @@ void UNetSyncSubsystem::HandleConnectionError(const FString& Error)
 {
 	bConnecting = false;
 	bConnected = false;
+	bRoomActive = false;
 	NextConnectAt = FPlatformTime::Seconds() + ReconnectSeconds;
 	UE_LOG(LogTemp, Warning, TEXT("[AI003][SYNC] connection error: %s"), *Error);
 }
@@ -160,6 +165,7 @@ void UNetSyncSubsystem::SendJoin()
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("client"), TEXT("ue5"));
 	Body->SetStringField(TEXT("name"), TEXT("UE5Player"));
+	Body->SetStringField(TEXT("clientId"), ClientID);
 	Send(TEXT("join"), Body);
 }
 
@@ -367,6 +373,7 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 	if (Socket.IsValid() && !Socket->IsConnected())
 	{
 		bConnected = false;
+		bRoomActive = false;
 		NextConnectAt = Now + ReconnectSeconds;
 		return true;
 	}
@@ -426,6 +433,7 @@ void UNetSyncSubsystem::SendRoomEnter()
 {
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("name"), TEXT("UE5Player"));
+	Body->SetStringField(TEXT("clientId"), ClientID);
 	Send(TEXT("room.enter"), Body);
 }
 
@@ -476,11 +484,19 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 	RoomSendInterval = 1.0 / FMath::Max(1, TickRate);
 	Body->TryGetNumberField(TEXT("maxHP"), RoomMaxHP);
 	RoomHP = RoomMaxHP;
+	const TSharedPtr<FJsonObject>* State = nullptr;
+	if (Body->TryGetObjectField(TEXT("state"), State) && State != nullptr)
+	{
+		(*State)->TryGetNumberField(TEXT("hp"), RoomHP);
+	}
 	Body->TryGetNumberField(TEXT("tick"), RoomTick);
 
 	if (AWorldCharacter* Character = LocalCharacter())
 	{
-		RoomCenter = Character->GetActorLocation();
+		if (!bRoomActive)
+		{
+			RoomCenter = Character->GetActorLocation();
+		}
 		Character->GetCharacterMovement()->DisableMovement();
 	}
 
@@ -599,4 +615,24 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 FVector UNetSyncSubsystem::RoomToWorld(double XMeters, double ZMeters) const
 {
 	return RoomCenter + FVector(XMeters * 100.0, ZMeters * 100.0, 0.0);
+}
+
+FString UNetSyncSubsystem::LoadOrCreateClientId()
+{
+	const FString Path = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ClientId.txt"));
+
+	FString Value;
+	if (FFileHelper::LoadFileToString(Value, *Path))
+	{
+		Value.TrimStartAndEndInline();
+		if (!Value.IsEmpty())
+		{
+			return Value;
+		}
+	}
+
+	Value = FGuid::NewGuid().ToString(EGuidFormats::Digits).ToLower();
+	FFileHelper::SaveStringToFile(Value, *Path);
+	UE_LOG(LogTemp, Display, TEXT("[AI003][SYNC] generated clientId %s"), *Value);
+	return Value;
 }

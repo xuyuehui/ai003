@@ -90,9 +90,10 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 远端用 `ARemotePlayer` 显示，动画由帧间位移推导（run/walk/idle）。
 - 世界快照在房间激活时忽略（`ApplySnapshot` 早退），避免同一玩家出现两个化身。
 - HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `roomId/hp/tick/fighters`。
+- 持久身份：`Saved/ClientId.txt`（首次 `FGuid` 生成），`join`/`room.enter` 携带；
+  断线时 `bRoomActive=false`，重连后自动重发 `room.enter`，服务器按 `clientId` 恢复角色。
 - 调试：`-AI003RoomBot` 让客户端自动走向场地中心并周期性攻击（用于双端对战验证）。
-- 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点，
-  断线即离房。
+- 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
 
 ## 6. 材质
 

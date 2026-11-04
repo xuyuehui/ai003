@@ -158,7 +158,8 @@ namespace AI003.Net
             var body = new JObject
             {
                 ["client"] = ClientKind,
-                ["name"] = "UnityPlayer"
+                ["name"] = "UnityPlayer",
+                ["clientId"] = ClientIdentity.Id
             };
             _connection.Send(new Envelope { Type = "join", Seq = _connection.NextSeq(), Body = body });
         }

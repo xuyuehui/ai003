@@ -178,6 +178,68 @@ func TestPlayersSeparate(t *testing.T) {
 	}
 }
 
+func TestReconnectKeepsState(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("attacker", "A")
+	r.Enter("target", "B")
+
+	// Land one hit on the target.
+	r.SetInput("attacker", Input{DX: 1})
+	for i := 0; i < 4; i++ {
+		r.Step()
+	}
+	r.SetInput("attacker", Input{Buttons: ButtonAttack})
+	r.Step()
+
+	before := playerByID(r.Step(), "target")
+	if before.HP != MaxHP-AttackDamage {
+		t.Fatalf("hp before disconnect = %d", before.HP)
+	}
+
+	r.MarkOffline("target")
+	frame := r.Step()
+	offline := playerByID(frame, "target")
+	if !offline.Offline {
+		t.Fatal("target not marked offline")
+	}
+
+	// Reconnect: same id resumes with its health, slot and position.
+	state := r.Enter("target", "B")
+	if state.Offline || state.HP != before.HP || state.Slot != before.Slot || state.X != before.X || state.Z != before.Z {
+		t.Fatalf("reconnect state = %+v, want HP=%d slot=%d pos=(%d,%d)", state, before.HP, before.Slot, before.X, before.Z)
+	}
+}
+
+func TestOfflineGraceExpires(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("p1", "A")
+	r.MarkOffline("p1")
+
+	for i := 0; i < DisconnectGraceTicks; i++ {
+		r.Step()
+	}
+	if r.Has("p1") {
+		t.Fatalf("player still present after %d offline ticks", DisconnectGraceTicks)
+	}
+}
+
+func TestOfflinePlayerCannotBeHit(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("attacker", "A")
+	r.Enter("target", "B")
+	r.MarkOffline("target")
+
+	r.SetInput("attacker", Input{DX: 1})
+	for i := 0; i < 6; i++ {
+		r.Step()
+	}
+	r.SetInput("attacker", Input{Buttons: ButtonAttack})
+	frame := r.Step()
+	if hp := playerByID(frame, "target").HP; hp != MaxHP {
+		t.Fatalf("offline target took damage: hp=%d", hp)
+	}
+}
+
 func playerByID(frame Frame, id string) State {
 	for _, state := range frame.Players {
 		if state.ID == id {
