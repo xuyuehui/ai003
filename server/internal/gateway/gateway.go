@@ -387,8 +387,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			log.Info("room entered", "player", clientID, "session", sessionID, "room", roomID, "tick", tick)
 
 		case "room.input":
-			var in room.Input
-			if err := json.Unmarshal(msg.Body, &in); err != nil {
+			var payload struct {
+				Tick    uint64 `json:"tick"`
+				DX      int8   `json:"dx"`
+				DZ      int8   `json:"dz"`
+				Buttons uint8  `json:"buttons"`
+			}
+			if err := json.Unmarshal(msg.Body, &payload); err != nil {
 				writeError(msg.Seq, msg.Type, "invalid room.input body: "+err.Error())
 				continue
 			}
@@ -399,7 +404,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				writeError(msg.Seq, msg.Type, "room.enter before room.input")
 				continue
 			}
-			if !s.rooms.SetInput(info.roomID, info.clientID, in) {
+			in := room.Input{DX: payload.DX, DZ: payload.DZ, Buttons: payload.Buttons}
+			if !s.rooms.SetInput(info.roomID, info.clientID, payload.Tick, in) {
 				writeError(msg.Seq, msg.Type, "room.input for unknown player")
 				continue
 			}

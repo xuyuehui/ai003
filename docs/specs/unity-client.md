@@ -104,8 +104,12 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 持久身份 `ClientIdentity.Id`（`PlayerPrefs: AI003.ClientId`，首次生成 GUID），
   `join` 与 `room.enter` 都会带上；断线时 `RoomClient` 不销毁战斗状态，重连后自动重发
   `room.enter`，服务器按 `clientId` 恢复原角色（30 s 宽限）。
-- 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)` 直接发一帧输入；
-  `ConnectionBootstrap.DebugDisconnect()` 主动断开以验证重连。
+- 客户端预测：本地按 `speedMMPerTick`/`diagonalMMPerTick` 的整数规则模拟，保持
+  `serverTick + 3` 的领先量（掉帧时补 tick）；每个 tick 的输入与预测位置分别存在
+  `_pending` / `_predicted`，`room.frame` 到达后比较该 tick 的预测位置，误差 >50 mm 时
+  回到服务器位置并重放未确认输入。HUD 显示 `pred`/`corr`/回滚误差。
+- 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)`、`DebugHold(dx, dz, attack, seconds)`
+  直接驱动预测输入；`ConnectionBootstrap.DebugDisconnect()` 主动断开以验证重连。
 - 已知限制：竞技场叠加在出生点草地上，本地移动为服务器帧回放不是预测。
 
 ## 7. 编辑器自动化与测试

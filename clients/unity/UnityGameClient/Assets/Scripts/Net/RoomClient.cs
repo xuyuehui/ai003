@@ -31,6 +31,14 @@ namespace AI003.Net
         public int Players { get; private set; }
         public bool Dead { get; private set; }
 
+        public int PredictedTick => _predictedTick;
+        public int ServerTick => _serverTick;
+        public int Corrections => _corrections;
+        public float LastError => _lastError;
+        public Vector3 PredictedPosition => _predictedPos;
+        public int LastCommandDX => _lastDX;
+        public int LastCommandDZ => _lastDZ;
+
         private readonly List<Envelope> _inbox = new List<Envelope>();
         private readonly Dictionary<string, RemoteAvatar> _remotes = new Dictionary<string, RemoteAvatar>();
         private readonly Dictionary<string, Vector3> _lastPositions = new Dictionary<string, Vector3>();
@@ -52,12 +60,40 @@ namespace AI003.Net
 
         private Vector3 _center;
         private float _groundY;
-        private Vector3 _targetPosition;
-        private float _targetYaw;
         private string _lastEvent = "";
         private float _lastEventUntil;
         private GUIStyle _style;
         private GUIStyle _barStyle;
+
+        // Client-side prediction: the local avatar simulates each tick with the
+        // same integer step as the server, and reconciles against room.frame.
+        private struct RoomCommand
+        {
+            public int DX;
+            public int DZ;
+            public bool Attack;
+        }
+
+        private readonly Dictionary<int, RoomCommand> _pending = new Dictionary<int, RoomCommand>();
+        private readonly Dictionary<int, Vector3> _predicted = new Dictionary<int, Vector3>();
+        private Vector3 _predictedPos;
+        private Vector3 _lastAppliedPos;
+        private int _predictedTick;
+        private int _serverTick;
+        private int _facingX;
+        private int _facingZ;
+        private float _speedPerTick = 0.25f;
+        private float _diagPerTick = 0.177f;
+        private float _nextPredictAt;
+        private int _corrections;
+        private float _lastError;
+
+        private int _debugDX;
+        private int _debugDZ;
+        private bool _debugAttack;
+        private float _debugUntil;
+        private int _lastDX;
+        private int _lastDZ;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoInstall()
@@ -152,13 +188,24 @@ namespace AI003.Net
                 _localAnimator = _local.GetComponentInChildren<Animator>();
             }
 
-            SmoothLocal();
+            float now = Time.unscaledTime;
 
-            if (Time.unscaledTime >= _nextSend)
+            // Keep the local simulation a few ticks ahead of the server; if a
+            // frame was long (editor hitch) catch up instead of drifting behind.
+            const int predictionAhead = 3;
+            int desired = _serverTick + predictionAhead;
+            int guard = 0;
+            while (_predictedTick < desired && guard++ < 8)
             {
-                _nextSend = Time.unscaledTime + _sendInterval;
-                SendInput();
+                PredictTick();
             }
+
+            if (now >= _nextPredictAt)
+            {
+                _nextPredictAt = Mathf.Max(now + _sendInterval, _nextPredictAt + _sendInterval);
+                PredictTick();
+            }
+            ApplyLocalPrediction();
         }
 
         private void SendEnter()
@@ -171,35 +218,19 @@ namespace AI003.Net
             _connection.Send(new Envelope { Type = "room.enter", Seq = _connection.NextSeq(), Body = body });
         }
 
-        private void SendInput()
-        {
-            int dx = 0, dz = 0;
-            bool attack = false;
-            var keyboard = Keyboard.current;
-            if (keyboard != null)
-            {
-                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) dx += 1;
-                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) dx -= 1;
-                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) dz += 1;
-                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) dz -= 1;
-                attack = keyboard.spaceKey.isPressed || keyboard.leftCtrlKey.isPressed;
-            }
-
-            DebugSendInput(dx, dz, attack);
-        }
-
-        /// <summary>Test/debug hook: sends one room.input frame.</summary>
+        /// <summary>Test/debug hook: holds an input for a short window (prediction included).</summary>
         public void DebugSendInput(int dx, int dz, bool attack)
         {
-            if (!InRoom || _connection == null) return;
+            DebugHold(dx, dz, attack, 0.25f);
+        }
 
-            var body = new JObject
-            {
-                ["dx"] = dx,
-                ["dz"] = dz,
-                ["buttons"] = attack ? 1 : 0
-            };
-            _connection.Send(new Envelope { Type = "room.input", Seq = _connection.NextSeq(), Body = body });
+        /// <summary>Test/debug hook: overrides the read input for a number of seconds.</summary>
+        public void DebugHold(int dx, int dz, bool attack, float seconds)
+        {
+            _debugDX = dx;
+            _debugDZ = dz;
+            _debugAttack = attack;
+            _debugUntil = Time.unscaledTime + Mathf.Max(0.05f, seconds);
         }
 
         private void HandleMessage(Envelope envelope)
@@ -241,9 +272,29 @@ namespace AI003.Net
             {
                 _center = _local.transform.position;
                 _groundY = _center.y;
-                _targetPosition = _center;
                 _local.enabled = false;
                 _localAnimator = _local.GetComponentInChildren<Animator>();
+            }
+
+            _speedPerTick = (body["speedMMPerTick"]?.Value<float>() ?? 250f) / 1000f;
+            _diagPerTick = (body["diagonalMMPerTick"]?.Value<float>() ?? 177f) / 1000f;
+
+            if (!wasInRoom)
+            {
+                _predictedTick = body["tick"]?.Value<int>() ?? 0;
+                _nextPredictAt = Time.unscaledTime + _sendInterval;
+            }
+
+            if (state != null)
+            {
+                _predictedPos = ToWorld(
+                    (state["x"]?.Value<float>() ?? 0f) / 1000f,
+                    (state["z"]?.Value<float>() ?? 0f) / 1000f);
+                _facingX = state["facingX"]?.Value<int>() ?? 0;
+                _facingZ = state["facingZ"]?.Value<int>() ?? 1;
+                _lastAppliedPos = _predictedPos;
+                _pending.Clear();
+                _predicted.Clear();
             }
 
             if (!wasInRoom)
@@ -286,8 +337,7 @@ namespace AI003.Net
                 {
                     HP = token["hp"]?.Value<int>() ?? HP;
                     Dead = !alive;
-                    _targetPosition = position;
-                    _targetYaw = yaw;
+                    Reconcile(position, Tick);
                 }
                 else
                 {
@@ -361,24 +411,145 @@ namespace AI003.Net
             }
         }
 
-        private void SmoothLocal()
+        private void PredictTick()
+        {
+            if (!InRoom || _local == null) return;
+
+            RoomCommand command = ReadCommand();
+            int tick = ++_predictedTick;
+            _pending[tick] = command;
+
+            StepPrediction(ref _predictedPos, ref _facingX, ref _facingZ, command);
+            _predicted[tick] = _predictedPos;
+
+            SendTickInput(tick, command);
+        }
+
+        /// <summary>Applies the predicted state to the avatar immediately (no 20 Hz lag).</summary>
+        private void ApplyLocalPrediction()
         {
             if (_local == null) return;
 
-            float t = 1f - Mathf.Exp(-20f * Time.deltaTime);
-            _local.transform.position = Vector3.Lerp(_local.transform.position, _targetPosition, t);
-            _local.transform.rotation = Quaternion.Slerp(
-                _local.transform.rotation, Quaternion.Euler(0f, _targetYaw, 0f), t);
+            float moved = Vector3.Distance(_predictedPos, _lastAppliedPos);
+            _lastAppliedPos = _predictedPos;
+
+            _local.transform.position = _predictedPos;
+            float yaw = YawFromFacing(_facingX, _facingZ);
+            _local.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             if (_localAnimator != null)
             {
-                float moved = Vector3.Distance(_local.transform.position, _lastPositions.TryGetValue("self", out Vector3 previous) ? previous : _local.transform.position);
-                _lastPositions["self"] = _local.transform.position;
-                float speed = moved / Mathf.Max(0.001f, Time.deltaTime);
-                _localAnimator.SetFloat("Speed", Mathf.Clamp01(speed / 10f));
+                bool moving = moved > 0.01f;
+                _localAnimator.SetFloat("Speed", moving ? 0.6f : 0f);
                 _localAnimator.SetBool("Grounded", true);
-                _localAnimator.speed = speed > 0.2f ? Mathf.Clamp(speed / 6f, 0.6f, 1.5f) : 1f;
+                _localAnimator.speed = moving ? 1f : 1f;
             }
+        }
+
+        /// <summary>Compares the authoritative frame with the prediction and replays if needed.</summary>
+        private void Reconcile(Vector3 serverPosition, int serverTick)
+        {
+            _serverTick = serverTick;
+
+            bool replay = false;
+            if (_predicted.TryGetValue(serverTick, out Vector3 predicted))
+            {
+                _lastError = Vector3.Distance(predicted, serverPosition);
+                if (_lastError > 0.05f)
+                {
+                    _predictedPos = serverPosition;
+                    _corrections++;
+                    replay = true;
+                }
+            }
+            else
+            {
+                // Joined mid-stream or lost a frame: snap to the server state.
+                _predictedPos = serverPosition;
+                replay = true;
+            }
+
+            if (replay)
+            {
+                for (int tick = serverTick + 1; tick <= _predictedTick; tick++)
+                {
+                    if (!_pending.TryGetValue(tick, out RoomCommand command)) break;
+                    StepPrediction(ref _predictedPos, ref _facingX, ref _facingZ, command);
+                    _predicted[tick] = _predictedPos;
+                }
+                _lastAppliedPos = _predictedPos;
+            }
+
+            Prune(serverTick);
+        }
+
+        private void StepPrediction(ref Vector3 position, ref int facingX, ref int facingZ, RoomCommand command)
+        {
+            if (command.DX == 0 && command.DZ == 0) return;
+
+            float step = command.DX != 0 && command.DZ != 0 ? _diagPerTick : _speedPerTick;
+            position.x += command.DX * step;
+            position.z += command.DZ * step;
+            position.x = Mathf.Clamp(position.x - _center.x, -_arenaHalfMeters, _arenaHalfMeters) + _center.x;
+            position.z = Mathf.Clamp(position.z - _center.z, -_arenaHalfMeters, _arenaHalfMeters) + _center.z;
+            facingX = command.DX;
+            facingZ = command.DZ;
+        }
+
+        private void Prune(int serverTick)
+        {
+            var stale = new List<int>();
+            foreach (int tick in _predicted.Keys)
+            {
+                if (tick <= serverTick) stale.Add(tick);
+            }
+            foreach (int tick in stale) _predicted.Remove(tick);
+
+            stale.Clear();
+            foreach (int tick in _pending.Keys)
+            {
+                if (tick <= serverTick) stale.Add(tick);
+            }
+            foreach (int tick in stale) _pending.Remove(tick);
+        }
+
+        private RoomCommand ReadCommand()
+        {
+            if (Time.unscaledTime < _debugUntil)
+            {
+                _lastDX = _debugDX;
+                _lastDZ = _debugDZ;
+                return new RoomCommand { DX = _debugDX, DZ = _debugDZ, Attack = _debugAttack };
+            }
+
+            int dx = 0, dz = 0;
+            bool attack = false;
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) dx += 1;
+                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) dx -= 1;
+                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) dz += 1;
+                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) dz -= 1;
+                attack = keyboard.spaceKey.isPressed || keyboard.leftCtrlKey.isPressed;
+            }
+            _lastDX = dx;
+            _lastDZ = dz;
+            return new RoomCommand { DX = dx, DZ = dz, Attack = attack };
+        }
+
+        private void SendTickInput(int tick, RoomCommand command)
+        {
+            if (_connection == null) return;
+
+            var body = new JObject
+            {
+                ["tick"] = tick,
+                ["dx"] = command.DX,
+                ["dz"] = command.DZ,
+                ["buttons"] = command.Attack ? 1 : 0
+            };
+            _connection.Send(new Envelope { Type = "room.input", Seq = _connection.NextSeq(), Body = body });
         }
 
         private Vector3 ToWorld(float xMeters, float zMeters)
@@ -442,10 +613,10 @@ namespace AI003.Net
             GUI.color = Color.white;
 
             string eventText = Time.unscaledTime < _lastEventUntil ? "   " + _lastEvent : "";
-            GUI.Label(new Rect(16f, Screen.height - 68f, 620f, 24f),
-                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick}  fighters {Players}{eventText}", _style);
-            GUI.Label(new Rect(16f, Screen.height - 44f, 700f, 24f),
-                "WASD / arrows move   Space attack", _style);
+            GUI.Label(new Rect(16f, Screen.height - 68f, 760f, 24f),
+                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {_predictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
+            GUI.Label(new Rect(16f, Screen.height - 44f, 760f, 24f),
+                $"WASD / arrows move   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
         }
     }
 }

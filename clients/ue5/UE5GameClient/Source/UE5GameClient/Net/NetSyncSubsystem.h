@@ -46,10 +46,23 @@ private:
 	bool Tick(float DeltaSeconds);
 
 	// Combat room (protocol v3).
+	struct FRoomCommand
+	{
+		int32 DX = 0;
+		int32 DZ = 0;
+		bool bAttack = false;
+	};
+
 	void SendRoomEnter();
-	void SendRoomInput();
+	void SendRoomInput(int32 Tick, const FRoomCommand& Command);
 	void EnterRoom(const TSharedPtr<FJsonObject>& Body);
 	void ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body);
+	void PredictTick();
+	void ApplyPrediction();
+	void Reconcile(const FVector& ServerPosition, int32 ServerTick);
+	void StepPrediction(const FRoomCommand& Command);
+	void PrunePrediction(int32 ServerTick);
+	FRoomCommand ReadRoomCommand() const;
 	static FString LoadOrCreateClientId();
 	class AWorldCharacter* LocalCharacter() const;
 	FVector RoomToWorld(double XMeters, double ZMeters) const;
@@ -89,4 +102,15 @@ private:
 	double NextHudAt = 0.0;
 	float RoomYaw = 0.f;
 	FVector RoomCenter = FVector::ZeroVector;
+
+	TMap<int32, FRoomCommand> PendingCommands;
+	TMap<int32, FVector> PredictedHistory;
+	FVector PredictedPos = FVector::ZeroVector;
+	int32 PredictedTick = 0;
+	int32 ServerTick = 0;
+	int32 Corrections = 0;
+	double NextPredictAt = 0.0;
+	float LastErrorCm = 0.f;
+	float RoomSpeedCm = 25.f;
+	float RoomDiagCm = 17.7f;
 };

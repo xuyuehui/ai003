@@ -9,7 +9,7 @@ func TestMovementAndArenaClamp(t *testing.T) {
 	r := New(DefaultCapacity)
 	r.Enter("p1", "Alice")
 
-	r.SetInput("p1", Input{DX: 1})
+	r.SetInput("p1", 0, Input{DX: 1})
 	frame := r.Step()
 	if got := frame.Players[0].X; got != SpeedMMPerTick {
 		t.Fatalf("x after one tick = %d, want %d", got, SpeedMMPerTick)
@@ -27,7 +27,7 @@ func TestMovementAndArenaClamp(t *testing.T) {
 func TestDiagonalIsNotFaster(t *testing.T) {
 	r := New(DefaultCapacity)
 	r.Enter("p1", "Alice")
-	r.SetInput("p1", Input{DX: 1, DZ: 1})
+	r.SetInput("p1", 0, Input{DX: 1, DZ: 1})
 
 	state := r.Step().Players[0]
 	if state.X != DiagonalMMPerTick || state.Z != DiagonalMMPerTick {
@@ -41,13 +41,13 @@ func TestAttackCooldownAndDeath(t *testing.T) {
 	r.Enter("target", "B")
 
 	// Attacker spawns at (0,0), target at (4000,0): walk into range first.
-	r.SetInput("attacker", Input{DX: 1})
+	r.SetInput("attacker", 0, Input{DX: 1})
 	for i := 0; i < 4; i++ {
 		r.Step()
 	}
 
 	// In range now; stand still and hold attack.
-	r.SetInput("attacker", Input{Buttons: ButtonAttack})
+	r.SetInput("attacker", 0, Input{Buttons: ButtonAttack})
 	frame := r.Step()
 	if hp := playerByID(frame, "target").HP; hp != MaxHP-AttackDamage {
 		t.Fatalf("hp after first hit = %d, want %d", hp, MaxHP-AttackDamage)
@@ -82,7 +82,7 @@ func TestAttackCooldownAndDeath(t *testing.T) {
 	}
 
 	// Stop attacking so the respawned target is not hit again immediately.
-	r.SetInput("attacker", Input{})
+	r.SetInput("attacker", 0, Input{})
 
 	// After the respawn delay it comes back at full health.
 	var respawned bool
@@ -108,7 +108,7 @@ func TestOutOfRangeAndCone(t *testing.T) {
 	r.Enter("b", "B")
 
 	// Facing +z, target at +x 4 m: outside both cone and range.
-	r.SetInput("a", Input{Buttons: ButtonAttack})
+	r.SetInput("a", 0, Input{Buttons: ButtonAttack})
 	frame := r.Step()
 	if hp := playerByID(frame, "b").HP; hp != MaxHP {
 		t.Fatalf("hit through range/cone: hp=%d", hp)
@@ -128,10 +128,10 @@ func TestDeterministicFrames(t *testing.T) {
 		if tick%7 == 0 {
 			input1.Buttons = ButtonAttack
 		}
-		first.SetInput("p1", input1)
-		second.SetInput("p1", input1)
-		first.SetInput("p2", input2)
-		second.SetInput("p2", input2)
+		first.SetInput("p1", 0, input1)
+		second.SetInput("p1", 0, input1)
+		first.SetInput("p2", 0, input2)
+		second.SetInput("p2", 0, input2)
 
 		frameA := first.Step()
 		frameB := second.Step()
@@ -151,7 +151,7 @@ func TestLeave(t *testing.T) {
 	if len(frame.Players) != 1 || frame.Players[0].ID != "p2" {
 		t.Fatalf("players after leave = %+v", frame.Players)
 	}
-	if r.SetInput("p1", Input{}) {
+	if r.SetInput("p1", 0, Input{}) {
 		t.Fatal("SetInput accepted a player who left")
 	}
 }
@@ -162,8 +162,8 @@ func TestPlayersSeparate(t *testing.T) {
 	r.Enter("b", "B")
 
 	// Walk both towards the centre so they overlap, then let separation act.
-	r.SetInput("a", Input{DX: 1})
-	r.SetInput("b", Input{DX: -1})
+	r.SetInput("a", 0, Input{DX: 1})
+	r.SetInput("b", 0, Input{DX: -1})
 	var frame Frame
 	for i := 0; i < 60; i++ {
 		frame = r.Step()
@@ -184,11 +184,11 @@ func TestReconnectKeepsState(t *testing.T) {
 	r.Enter("target", "B")
 
 	// Land one hit on the target.
-	r.SetInput("attacker", Input{DX: 1})
+	r.SetInput("attacker", 0, Input{DX: 1})
 	for i := 0; i < 4; i++ {
 		r.Step()
 	}
-	r.SetInput("attacker", Input{Buttons: ButtonAttack})
+	r.SetInput("attacker", 0, Input{Buttons: ButtonAttack})
 	r.Step()
 
 	before := playerByID(r.Step(), "target")
@@ -229,14 +229,37 @@ func TestOfflinePlayerCannotBeHit(t *testing.T) {
 	r.Enter("target", "B")
 	r.MarkOffline("target")
 
-	r.SetInput("attacker", Input{DX: 1})
+	r.SetInput("attacker", 0, Input{DX: 1})
 	for i := 0; i < 6; i++ {
 		r.Step()
 	}
-	r.SetInput("attacker", Input{Buttons: ButtonAttack})
+	r.SetInput("attacker", 0, Input{Buttons: ButtonAttack})
 	frame := r.Step()
 	if hp := playerByID(frame, "target").HP; hp != MaxHP {
 		t.Fatalf("offline target took damage: hp=%d", hp)
+	}
+}
+
+func TestTickedInputAppliedAtTick(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("p1", "A")
+
+	// Queue an input for tick 2; tick 1 must not see it.
+	r.SetInput("p1", 2, Input{DX: 1})
+	first := r.Step()
+	if first.Players[0].X != 0 {
+		t.Fatalf("tick 1 x = %d, want 0", first.Players[0].X)
+	}
+
+	second := r.Step()
+	if second.Players[0].X != SpeedMMPerTick {
+		t.Fatalf("tick 2 x = %d, want %d", second.Players[0].X, SpeedMMPerTick)
+	}
+
+	// No new input: the previous one repeats.
+	third := r.Step()
+	if third.Players[0].X != 2*SpeedMMPerTick {
+		t.Fatalf("tick 3 x = %d, want %d", third.Players[0].X, 2*SpeedMMPerTick)
 	}
 }
 

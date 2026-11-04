@@ -58,6 +58,10 @@ type Player struct {
 	Cooldown int
 	Respawn  int // ticks until respawn; 0 means alive
 	Input    Input
+	// LastInput is applied when no ticked input is queued (packet loss/repeat).
+	LastInput Input
+	// Pending holds inputs keyed by the tick they belong to (client prediction).
+	Pending map[uint64]Input
 	// Offline is set when the socket drops: the state is kept for
 	// DisconnectGraceTicks so a reconnect can resume, then the player is removed.
 	Offline      bool
@@ -226,8 +230,10 @@ func (r *Room) removeLocked(id string) {
 	}
 }
 
-// SetInput stores the latest command; it is consumed by the next Step.
-func (r *Room) SetInput(id string, in Input) bool {
+// SetInput stores a command. A zero tick applies from the next tick (legacy
+// clients); a non-zero tick is applied exactly at that tick, which is what the
+// clients' prediction/replay relies on.
+func (r *Room) SetInput(id string, tick uint64, in Input) bool {
 	in.DX = clampDir(in.DX)
 	in.DZ = clampDir(in.DZ)
 
@@ -238,7 +244,15 @@ func (r *Room) SetInput(id string, in Input) bool {
 	if !ok {
 		return false
 	}
-	p.Input = in
+	if tick == 0 || tick <= r.tick {
+		p.LastInput = in
+		p.Input = in
+		return true
+	}
+	if p.Pending == nil {
+		p.Pending = make(map[uint64]Input)
+	}
+	p.Pending[tick] = in
 	return true
 }
 
@@ -252,6 +266,23 @@ func (r *Room) Snapshot() (uint64, []State) {
 		states = append(states, stateOf(r.players[id]))
 	}
 	return r.tick, states
+}
+
+// inputFor returns the input for the current tick: a queued ticked input when
+// present, otherwise the last one (packet loss repeats the previous command).
+func (r *Room) inputFor(p *Player) Input {
+	if p.Pending != nil {
+		if in, ok := p.Pending[r.tick]; ok {
+			delete(p.Pending, r.tick)
+			p.LastInput = in
+		}
+		for tick := range p.Pending {
+			if tick < r.tick {
+				delete(p.Pending, tick)
+			}
+		}
+	}
+	return p.LastInput
 }
 
 // Step advances one tick and returns the frame to broadcast.
@@ -275,6 +306,7 @@ func (r *Room) Step() Frame {
 			}
 			continue
 		}
+		p.Input = r.inputFor(p)
 		frame.Inputs[id] = p.Input
 		r.stepPlayer(p, &frame.Events)
 	}
@@ -429,6 +461,8 @@ func (r *Room) reset(p *Player) {
 	p.Cooldown = 0
 	p.Respawn = 0
 	p.Input = Input{}
+	p.LastInput = Input{}
+	p.Pending = nil
 }
 
 func stateOf(p *Player) State {

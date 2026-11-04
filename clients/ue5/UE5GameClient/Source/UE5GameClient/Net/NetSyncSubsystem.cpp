@@ -401,18 +401,30 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 			NextRoomEnterAt = Now + 1.0;
 			SendRoomEnter();
 		}
-		else if (bRoomActive && Now >= NextRoomSendAt)
+		else if (bRoomActive)
 		{
-			NextRoomSendAt = Now + RoomSendInterval;
-			SendRoomInput();
+			// Stay a few ticks ahead of the server; catch up after a hitch.
+			const int32 PredictionAhead = 3;
+			const int32 Desired = ServerTick + PredictionAhead;
+			int32 Guard = 0;
+			while (PredictedTick < Desired && Guard++ < 8)
+			{
+				PredictTick();
+			}
+
+			if (Now >= NextRoomSendAt)
+			{
+				NextRoomSendAt = Now + RoomSendInterval;
+				PredictTick();
+			}
 		}
 
 		if (bRoomActive && Now >= NextHudAt && GEngine != nullptr)
 		{
 			NextHudAt = Now + 0.25;
 			GEngine->AddOnScreenDebugMessage(1, 0.3f, FColor::White,
-				FString::Printf(TEXT("%s   hp %d/%d   tick %d   fighters %d   [WASD move, Space attack]"),
-					*RoomId, RoomHP, RoomMaxHP, RoomTick, RoomFighters));
+				FString::Printf(TEXT("%s   hp %d/%d   tick %d / pred %d   fighters %d   corr %d   [WASD move, Space attack]"),
+					*RoomId, RoomHP, RoomMaxHP, RoomTick, PredictedTick, RoomFighters, Corrections));
 		}
 	}
 
@@ -437,36 +449,41 @@ void UNetSyncSubsystem::SendRoomEnter()
 	Send(TEXT("room.enter"), Body);
 }
 
-void UNetSyncSubsystem::SendRoomInput()
+void UNetSyncSubsystem::SendRoomInput(int32 Tick, const FRoomCommand& Command)
 {
-	int32 DX = 0;
-	int32 DZ = 0;
-	bool bAttack = false;
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetNumberField(TEXT("tick"), Tick);
+	Body->SetNumberField(TEXT("dx"), Command.DX);
+	Body->SetNumberField(TEXT("dz"), Command.DZ);
+	Body->SetNumberField(TEXT("buttons"), Command.bAttack ? 1 : 0);
+	Send(TEXT("room.input"), Body);
+}
+
+UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
+{
+	FRoomCommand Command;
 
 	if (bRoomBot)
 	{
 		// Headless demo: walk to the arena centre and swing periodically.
-		if (FMath::Abs(RoomLocalX) > 500.0) DX = RoomLocalX > 0.0 ? -1 : 1;
-		if (FMath::Abs(RoomLocalZ) > 500.0) DZ = RoomLocalZ > 0.0 ? -1 : 1;
-		bAttack = (RoomTick % 40) < 8;
+		if (FMath::Abs(RoomLocalX) > 500.0) Command.DX = RoomLocalX > 0.0 ? -1 : 1;
+		if (FMath::Abs(RoomLocalZ) > 500.0) Command.DZ = RoomLocalZ > 0.0 ? -1 : 1;
+		Command.bAttack = (PredictedTick % 40) < 8;
+		return Command;
 	}
-	else if (AWorldCharacter* Character = LocalCharacter())
+
+	if (AWorldCharacter* Character = LocalCharacter())
 	{
 		if (APlayerController* PC = Cast<APlayerController>(Character->GetController()))
 		{
-			if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left)) DX -= 1;
-			if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) DX += 1;
-			if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up)) DZ += 1;
-			if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down)) DZ -= 1;
-			bAttack = PC->IsInputKeyDown(EKeys::SpaceBar);
+			if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left)) Command.DX -= 1;
+			if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) Command.DX += 1;
+			if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up)) Command.DZ += 1;
+			if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down)) Command.DZ -= 1;
+			Command.bAttack = PC->IsInputKeyDown(EKeys::SpaceBar);
 		}
 	}
-
-	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
-	Body->SetNumberField(TEXT("dx"), DX);
-	Body->SetNumberField(TEXT("dz"), DZ);
-	Body->SetNumberField(TEXT("buttons"), bAttack ? 1 : 0);
-	Send(TEXT("room.input"), Body);
+	return Command;
 }
 
 void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
@@ -490,6 +507,27 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 		(*State)->TryGetNumberField(TEXT("hp"), RoomHP);
 	}
 	Body->TryGetNumberField(TEXT("tick"), RoomTick);
+
+	double SpeedMM = 250.0, DiagMM = 177.0;
+	Body->TryGetNumberField(TEXT("speedMMPerTick"), SpeedMM);
+	Body->TryGetNumberField(TEXT("diagonalMMPerTick"), DiagMM);
+	RoomSpeedCm = static_cast<float>(SpeedMM / 10.0);
+	RoomDiagCm = static_cast<float>(DiagMM / 10.0);
+
+	if (State != nullptr)
+	{
+		double X = 0.0, Z = 0.0;
+		(*State)->TryGetNumberField(TEXT("x"), X);
+		(*State)->TryGetNumberField(TEXT("z"), Z);
+		PredictedPos = RoomToWorld(X / 1000.0, Z / 1000.0);
+	}
+	PredictedTick = RoomTick;
+	ServerTick = RoomTick;
+	Corrections = 0;
+	LastErrorCm = 0.f;
+	PendingCommands.Reset();
+	PredictedHistory.Reset();
+	NextRoomSendAt = FPlatformTime::Seconds();
 
 	if (AWorldCharacter* Character = LocalCharacter())
 	{
@@ -566,11 +604,8 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 			RoomYaw = Yaw;
 			RoomLocalX = X;
 			RoomLocalZ = Z;
-			if (AWorldCharacter* Character = LocalCharacter())
-			{
-				Character->SetActorLocation(Target);
-				Character->SetActorRotation(FRotator(0.f, Yaw, 0.f));
-			}
+			Reconcile(Target, RoomTick);
+			ApplyPrediction();
 			continue;
 		}
 
@@ -635,4 +670,105 @@ FString UNetSyncSubsystem::LoadOrCreateClientId()
 	FFileHelper::SaveStringToFile(Value, *Path);
 	UE_LOG(LogTemp, Display, TEXT("[AI003][SYNC] generated clientId %s"), *Value);
 	return Value;
+}
+
+void UNetSyncSubsystem::PredictTick()
+{
+	if (!bRoomActive)
+	{
+		return;
+	}
+
+	const FRoomCommand Command = ReadRoomCommand();
+	const int32 Tick = ++PredictedTick;
+	PendingCommands.Add(Tick, Command);
+	StepPrediction(Command);
+	PredictedHistory.Add(Tick, PredictedPos);
+	SendRoomInput(Tick, Command);
+	ApplyPrediction();
+}
+
+void UNetSyncSubsystem::ApplyPrediction()
+{
+	if (AWorldCharacter* Character = LocalCharacter())
+	{
+		Character->SetActorLocation(PredictedPos);
+		Character->SetActorRotation(FRotator(0.f, RoomYaw, 0.f));
+	}
+}
+
+void UNetSyncSubsystem::StepPrediction(const FRoomCommand& Command)
+{
+	if (Command.DX == 0 && Command.DZ == 0)
+	{
+		return;
+	}
+
+	const float Step = (Command.DX != 0 && Command.DZ != 0) ? RoomDiagCm : RoomSpeedCm;
+	// Protocol x maps to UE X, protocol z maps to UE Y.
+	PredictedPos.X += Command.DX * Step;
+	PredictedPos.Y += Command.DZ * Step;
+
+	const float Half = 2000.f;
+	PredictedPos.X = FMath::Clamp(PredictedPos.X, RoomCenter.X - Half, RoomCenter.X + Half);
+	PredictedPos.Y = FMath::Clamp(PredictedPos.Y, RoomCenter.Y - Half, RoomCenter.Y + Half);
+
+	RoomYaw = FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(Command.DX), static_cast<float>(Command.DZ)));
+}
+
+void UNetSyncSubsystem::Reconcile(const FVector& ServerPosition, int32 InServerTick)
+{
+	ServerTick = InServerTick;
+	bool bReplay = false;
+
+	if (const FVector* Predicted = PredictedHistory.Find(InServerTick))
+	{
+		LastErrorCm = FVector::Dist(*Predicted, ServerPosition);
+		if (LastErrorCm > 5.f)
+		{
+			PredictedPos = ServerPosition;
+			++Corrections;
+			bReplay = true;
+		}
+	}
+	else
+	{
+		// Joined mid-stream or lost a frame: snap to the server state.
+		PredictedPos = ServerPosition;
+		bReplay = true;
+	}
+
+	if (bReplay)
+	{
+		for (int32 Tick = InServerTick + 1; Tick <= PredictedTick; ++Tick)
+		{
+			const FRoomCommand* Command = PendingCommands.Find(Tick);
+			if (Command == nullptr)
+			{
+				break;
+			}
+			StepPrediction(*Command);
+			PredictedHistory.Add(Tick, PredictedPos);
+		}
+	}
+
+	PrunePrediction(InServerTick);
+}
+
+void UNetSyncSubsystem::PrunePrediction(int32 InServerTick)
+{
+	for (auto It = PredictedHistory.CreateIterator(); It; ++It)
+	{
+		if (It.Key() <= InServerTick)
+		{
+			It.RemoveCurrent();
+		}
+	}
+	for (auto It = PendingCommands.CreateIterator(); It; ++It)
+	{
+		if (It.Key() <= InServerTick)
+		{
+			It.RemoveCurrent();
+		}
+	}
 }

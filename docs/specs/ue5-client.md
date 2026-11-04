@@ -92,6 +92,9 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `roomId/hp/tick/fighters`。
 - 持久身份：`Saved/ClientId.txt`（首次 `FGuid` 生成），`join`/`room.enter` 携带；
   断线时 `bRoomActive=false`，重连后自动重发 `room.enter`，服务器按 `clientId` 恢复角色。
+- 客户端预测：本地以 `RoomSpeedCm`/`RoomDiagCm` 模拟并保持 `ServerTick + 3` 领先；
+  `PendingCommands`/`PredictedHistory` 保存每个 tick 的输入与位置，`room.frame` 到达后
+  误差 >5 cm 时回滚到服务器位置并重放；HUD 显示 `pred` 与 `corr`。
 - 调试：`-AI003RoomBot` 让客户端自动走向场地中心并周期性攻击（用于双端对战验证）。
 - 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
 

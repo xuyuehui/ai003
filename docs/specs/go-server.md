@@ -73,10 +73,13 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - `room.entered` 下发全部模拟常量（tickRate、场地半宽、速度、攻击范围/伤害/冷却、
   最大 HP、复活时间、攻击按键位），客户端不得写死。
 - 掉线即 `MarkOffline`；空房保留但循环不广播。
+- `room.input` 的 `tick` 是该输入生效的模拟 tick：非零且大于当前 tick 时排入
+  `Player.Pending`，`Step` 时按 tick 取出并更新 `LastInput`；缺 tick / 过期 tick 直接
+  作为 `LastInput` 立即生效（丢包与旧客户端兼容）。每 tick 会清掉过期排队项，避免堆积。
 - 测试：`room_test.go` 覆盖移动/夹取/斜向不加速/锥角/冷却/死亡/复活/分离/确定性/
-  **重连保留状态/宽限到期/离线不可被攻击**，`manager_test.go` 覆盖自动匹配、容量、满房、
-  离开腾位、列表、**重连回原房间**；`room_ws_test.go` 覆盖双人同帧、输入生效、离开移除、
-  未进入先输入被拒、`room.list`、**同 clientId 重连**。
+  **重连保留状态/宽限到期/离线不可被攻击/按 tick 生效**，`manager_test.go` 覆盖自动匹配、
+  容量、满房、离开腾位、列表、**重连回原房间**；`room_ws_test.go` 覆盖双人同帧、输入生效、
+  离开移除、未进入先输入被拒、`room.list`、**同 clientId 重连**。
 
 ## 5. 世界生成
 

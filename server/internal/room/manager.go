@@ -98,15 +98,15 @@ func (m *Manager) Leave(roomID, playerID string) {
 	}
 }
 
-// SetInput stores a player's input for the next tick of that room.
-func (m *Manager) SetInput(roomID, playerID string, in Input) bool {
+// SetInput stores a player's command for a specific tick (0 = next tick).
+func (m *Manager) SetInput(roomID, playerID string, tick uint64, in Input) bool {
 	m.mu.Lock()
 	r, ok := m.rooms[roomID]
 	m.mu.Unlock()
 	if !ok {
 		return false
 	}
-	return r.SetInput(playerID, in)
+	return r.SetInput(playerID, tick, in)
 }
 
 // Snapshot returns the current tick and players of a room.
