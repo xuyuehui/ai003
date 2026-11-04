@@ -52,7 +52,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | --- | --- | --- |
 | 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
-| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色，输出 `docs/images/demo-compare.png`；曝光差异待收敛 |
+| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空，输出 `docs/images/demo-compare.png` 与亮度差；tonemapping 差异待收敛 |
 | 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
 | 客户端预测 | 看 HUD `pred / corr / 误差` | `pred = server + 3`，静止误差 0 |
 | 断线重连 | `ConnectionBootstrap.DebugDisconnect()` 或杀 UE | 30 s 内同 `roomId`/`playerId` 恢复 |
@@ -100,5 +100,7 @@ windows-latest 上跑 Go 测试 + 无头演示（引擎不在 CI 内）。
 - 生产级规模：当前单网关、房间在内存、无持久化与 AOI；
 - 完整反作弊：服务器做边界/非法值/频率约束，但不做行为分析；
 - 正式美术与特效：UE 侧战斗反馈仍是 debug 图元。
+- 曝光对齐：UE 的 `AEM_Manual` 在该场景会压成黑帧，目前保留自动曝光，靠 Unity 侧
+  提高太阳/环境光/雾来贴近亮度（仍有约 13% 差）；彻底对齐需要统一 tonemapping 与固定曝光方案。
 
 这些取舍是为了让演示**可复现、可观测、可回归**，而不是把时间花在玩法内容上。

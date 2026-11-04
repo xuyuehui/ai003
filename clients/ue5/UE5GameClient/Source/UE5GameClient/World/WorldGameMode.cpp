@@ -1,6 +1,7 @@
 #include "World/WorldGameMode.h"
 
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
@@ -187,11 +188,13 @@ void AWorldGameMode::BeginDemoShot()
 		return;
 	}
 
-	// Match the Unity capture: character at spawn, facing the demo camera,
-	// with the sun rotated to light that side.
+	// Match the Unity capture exactly: Unity places the avatar by its feet, while
+	// UE's actor origin is the capsule centre, so lift by half the capsule height.
+	const FVector Ground = WorldData.IsValid() ? WorldData->SpawnUE() * 100.f : SpawnLocation;
+	const FVector FeetCenter = Ground + FVector(0.f, 0.f, 96.f);
 	if (AWorldCharacter* Character = Cast<AWorldCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
 	{
-		Character->SetActorLocation(SpawnLocation);
+		Character->SetActorLocation(FeetCenter);
 		Character->SetActorRotation(FRotator(0.f, 270.f, 0.f));
 	}
 
@@ -207,8 +210,8 @@ void AWorldGameMode::BeginDemoShot()
 		}
 	}
 
-	const FVector CameraLocation = SpawnLocation + FVector(0.f, -600.f, 320.f);
-	const FVector LookAt = SpawnLocation + FVector(0.f, 0.f, 120.f);
+	const FVector CameraLocation = Ground + FVector(0.f, -600.f, 320.f);
+	const FVector LookAt = Ground + FVector(0.f, 0.f, 120.f);
 	const FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
 
 	ACameraActor* Camera = World->SpawnActor<ACameraActor>(CameraLocation, CameraRotation);

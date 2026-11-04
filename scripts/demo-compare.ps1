@@ -80,6 +80,29 @@ finally {
 
 Write-Host "compare: $compare"
 
+function Get-MeanBrightness([string]$path) {
+    $bitmap = [System.Drawing.Bitmap]::FromFile($path)
+    try {
+        $sum = 0.0
+        $n = 0
+        for ($y = 0; $y -lt $bitmap.Height; $y += 8) {
+            for ($x = 0; $x -lt $bitmap.Width; $x += 8) {
+                $color = $bitmap.GetPixel($x, $y)
+                $sum += ($color.R + $color.G + $color.B) / 3.0
+                $n++
+            }
+        }
+        return [Math]::Round($sum / $n, 1)
+    }
+    finally { $bitmap.Dispose() }
+}
+
+if ((Test-Path $unityShot) -and (Test-Path $ueShot)) {
+    $unityMean = Get-MeanBrightness $unityShot
+    $ueMean = Get-MeanBrightness $ueShot
+    Write-Host ("brightness: Unity {0} / UE {1} (delta {2})" -f $unityMean, $ueMean, [Math]::Round($unityMean - $ueMean, 1))
+}
+
 if (-not $NoPublish) {
     $published = Join-Path $repo 'docs\images\demo-compare.png'
     Copy-Item $compare $published -Force

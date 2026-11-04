@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using AI003.World;
 using UnityEditor;
@@ -56,16 +56,25 @@ namespace AI003.EditorTools
             var sun = sunObject.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = new Color(1f, 0.95f, 0.86f);
-            sun.intensity = 1.25f;
+            sun.intensity = 2.6f;
 
             RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.42f, 0.48f, 0.56f);
+            RenderSettings.ambientLight = new Color(0.64f, 0.69f, 0.76f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = new Color(0.62f, 0.71f, 0.80f);
+            RenderSettings.fogColor = new Color(0.70f, 0.77f, 0.85f);
             RenderSettings.fogStartDistance = 240f;
             RenderSettings.fogEndDistance = 1900f;
-            RenderSettings.skybox = null;
+
+            // Procedural skybox so both engines show a blue gradient instead of
+            // Unity's previous flat clear colour.
+            var skybox = new Material(Shader.Find("Skybox/Procedural"));
+            skybox.SetFloat("_SunDisk", 2f);
+            skybox.SetFloat("_AtmosphereThickness", 1f);
+            skybox.SetColor("_SkyTint", new Color(0.5f, 0.6f, 0.7f));
+            skybox.SetColor("_GroundColor", new Color(0.35f, 0.4f, 0.45f));
+            skybox.SetFloat("_Exposure", 1.7f);
+            RenderSettings.skybox = skybox;
 
             GameObject prefab = Resources.Load<GameObject>(CharacterPrefab);
             if (prefab == null)
@@ -91,8 +100,7 @@ namespace AI003.EditorTools
             camera.fieldOfView = 62f;
             camera.nearClipPlane = 0.15f;
             camera.farClipPlane = 6000f;
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.55f, 0.68f, 0.80f);
+            camera.clearFlags = CameraClearFlags.Skybox;
             camera.transform.position = data.Spawn + new Vector3(0f, 3.2f, -6f);
             camera.transform.LookAt(data.Spawn + new Vector3(0f, 1.2f, 0f));
 
@@ -120,3 +128,4 @@ namespace AI003.EditorTools
         }
     }
 }
+
