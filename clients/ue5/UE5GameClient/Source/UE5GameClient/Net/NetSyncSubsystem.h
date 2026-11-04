@@ -57,6 +57,7 @@ private:
 	void SendRoomInput(int32 Tick, const FRoomCommand& Command);
 	void EnterRoom(const TSharedPtr<FJsonObject>& Body);
 	void ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body);
+	void HandleRoomEvents(const TSharedPtr<FJsonObject>& Body);
 	void PredictTick();
 	void ApplyPrediction();
 	void Reconcile(const FVector& ServerPosition, int32 ServerTick);

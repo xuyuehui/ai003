@@ -76,10 +76,12 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - `room.input` 的 `tick` 是该输入生效的模拟 tick：非零且大于当前 tick 时排入
   `Player.Pending`，`Step` 时按 tick 取出并更新 `LastInput`；缺 tick / 过期 tick 直接
   作为 `LastInput` 立即生效（丢包与旧客户端兼容）。每 tick 会清掉过期排队项，避免堆积。
+- 战斗事件：每次真正出拳（冷却结束且按下攻击）先追加 `attack`，再按射程/锥角判定
+  `hit`，血量归零追加 `death`，复活追加 `respawn`；落空也会广播 `attack` 供客户端播放动作。
 - 测试：`room_test.go` 覆盖移动/夹取/斜向不加速/锥角/冷却/死亡/复活/分离/确定性/
-  **重连保留状态/宽限到期/离线不可被攻击/按 tick 生效**，`manager_test.go` 覆盖自动匹配、
-  容量、满房、离开腾位、列表、**重连回原房间**；`room_ws_test.go` 覆盖双人同帧、输入生效、
-  离开移除、未进入先输入被拒、`room.list`、**同 clientId 重连**。
+  **重连保留状态/宽限到期/离线不可被攻击/按 tick 生效/出拳事件**，`manager_test.go` 覆盖
+  自动匹配、容量、满房、离开腾位、列表、**重连回原房间**；`room_ws_test.go` 覆盖双人同帧、
+  输入生效、离开移除、未进入先输入被拒、`room.list`、**同 clientId 重连**。
 
 ## 5. 世界生成
 

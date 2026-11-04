@@ -110,6 +110,10 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   回到服务器位置并重放未确认输入。HUD 显示 `pred`/`corr`/回滚误差。
 - 测试调试：`RoomClient.DebugSendInput(dx, dz, attack)`、`DebugHold(dx, dz, attack, seconds)`
   直接驱动预测输入；`ConnectionBootstrap.DebugDisconnect()` 主动断开以验证重连。
+- 战斗表现：进房时生成 `[AI003] Arena`（4 面 0.2 m 厚、±20 m 的黄色围栏，无碰撞）；
+  `attack` 事件驱动本地/远端前冲（0.35 m 正弦位移）、`hit` 触发受击闪红
+  （MaterialPropertyBlock `_BaseColor`）、伤害数字（世界坐标转屏幕、上浮 1 s）、
+  本地受击红色暗角，`death` 让远端倒地变灰、`respawn` 恢复；HUD 显示回滚误差。
 - 已知限制：竞技场叠加在出生点草地上，本地移动为服务器帧回放不是预测。
 
 ## 7. 编辑器自动化与测试

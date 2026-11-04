@@ -3,6 +3,7 @@
 #include "Net/NetSyncSubsystem.h"
 
 #include "Dom/JsonObject.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -419,6 +420,12 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 			}
 		}
 
+		if (bRoomActive && GEngine != nullptr && GetWorld() != nullptr)
+		{
+			DrawDebugBox(GetWorld(), RoomCenter + FVector(0, 0, 35), FVector(2000, 2000, 40),
+				FColor(255, 200, 0), false, 0.3f, 0, 18.f);
+		}
+
 		if (bRoomActive && Now >= NextHudAt && GEngine != nullptr)
 		{
 			NextHudAt = Now + 0.25;
@@ -644,6 +651,67 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 		if (Remote.IsValid()) Remote->Destroy();
 		RoomRemotes.Remove(Id);
 		RoomLastPositions.Remove(Id);
+	}
+
+	HandleRoomEvents(Body);
+}
+
+void UNetSyncSubsystem::HandleRoomEvents(const TSharedPtr<FJsonObject>& Body)
+{
+	const TArray<TSharedPtr<FJsonValue>>* Events = nullptr;
+	if (!Body.IsValid() || !Body->TryGetArrayField(TEXT("events"), Events) || Events == nullptr)
+	{
+		return;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Entry : *Events)
+	{
+		const TSharedPtr<FJsonObject> Event = Entry.IsValid() ? Entry->AsObject() : nullptr;
+		if (!Event.IsValid()) continue;
+
+		FString Type, Source, Target;
+		Event->TryGetStringField(TEXT("type"), Type);
+		Event->TryGetStringField(TEXT("source"), Source);
+		Event->TryGetStringField(TEXT("target"), Target);
+		int32 Damage = 0;
+		Event->TryGetNumberField(TEXT("damage"), Damage);
+
+		ARemotePlayer* SourceAvatar = RoomRemotes.FindRef(Source).Get();
+		ARemotePlayer* TargetAvatar = RoomRemotes.FindRef(Target).Get();
+
+		if (Type == TEXT("attack"))
+		{
+			if (SourceAvatar != nullptr) SourceAvatar->TriggerAttack();
+		}
+		else if (Type == TEXT("hit"))
+		{
+			if (TargetAvatar != nullptr)
+			{
+				TargetAvatar->TriggerHit();
+				DrawDebugString(GetWorld(), TargetAvatar->GetActorLocation() + FVector(0, 0, 220),
+					FString::Printf(TEXT("-%d"), Damage), nullptr, FColor::Yellow, 1.f);
+				DrawDebugSphere(GetWorld(), TargetAvatar->GetActorLocation() + FVector(0, 0, 110), 28.f, 8,
+					FColor::Red, false, 0.2f);
+			}
+			else if (Target == PlayerId)
+			{
+				if (AWorldCharacter* Character = LocalCharacter())
+				{
+					DrawDebugString(GetWorld(), Character->GetActorLocation() + FVector(0, 0, 220),
+						FString::Printf(TEXT("-%d"), Damage), nullptr, FColor::Yellow, 1.f);
+					DrawDebugSphere(GetWorld(), Character->GetActorLocation() + FVector(0, 0, 110), 28.f, 8,
+						FColor::Red, false, 0.2f);
+				}
+			}
+		}
+		else if (Type == TEXT("death"))
+		{
+			if (TargetAvatar != nullptr) TargetAvatar->SetAlive(false);
+		}
+		else if (Type == TEXT("respawn"))
+		{
+			if (SourceAvatar != nullptr) SourceAvatar->SetAlive(true);
+		}
 	}
 }
 

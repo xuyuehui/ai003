@@ -240,6 +240,23 @@ func TestOfflinePlayerCannotBeHit(t *testing.T) {
 	}
 }
 
+func TestAttackEventBroadcastEvenOnMiss(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("p1", "A")
+	r.SetInput("p1", 0, Input{Buttons: ButtonAttack})
+
+	frame := r.Step()
+	var hasAttack bool
+	for _, event := range frame.Events {
+		if event.Type == "attack" && event.Source == "p1" {
+			hasAttack = true
+		}
+	}
+	if !hasAttack {
+		t.Fatalf("no attack event in %+v", frame.Events)
+	}
+}
+
 func TestTickedInputAppliedAtTick(t *testing.T) {
 	r := New(DefaultCapacity)
 	r.Enter("p1", "A")

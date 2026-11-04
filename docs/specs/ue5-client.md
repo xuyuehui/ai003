@@ -96,6 +96,9 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   `PendingCommands`/`PredictedHistory` 保存每个 tick 的输入与位置，`room.frame` 到达后
   误差 >5 cm 时回滚到服务器位置并重放；HUD 显示 `pred` 与 `corr`。
 - 调试：`-AI003RoomBot` 让客户端自动走向场地中心并周期性攻击（用于双端对战验证）。
+- 战斗表现：`DrawDebugBox` 画 ±20 m 边界；`attack` 事件让 `ARemotePlayer` 前冲
+  （0.35 m 正弦），`hit` 触发缩放脉冲 + 红色 `DrawDebugSphere` + `DrawDebugString` 伤害数字，
+  `death` 让远端沿 Pitch 倒地、`respawn` 恢复；正式特效留待接入资产后替换。
 - 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
 
 ## 6. 材质

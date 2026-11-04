@@ -95,6 +95,20 @@ namespace AI003.Net
         private int _lastDX;
         private int _lastDZ;
 
+        private GameObject _arenaRoot;
+        private float _localAttackUntil;
+        private float _localHitUntil;
+        private bool _wasDead;
+
+        private struct DamagePopup
+        {
+            public Vector3 World;
+            public string Text;
+            public float Until;
+        }
+
+        private readonly List<DamagePopup> _popups = new List<DamagePopup>();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoInstall()
         {
@@ -300,6 +314,7 @@ namespace AI003.Net
             if (!wasInRoom)
             {
                 WorldSyncClient.EnsureExists().Suspend();
+                BuildArena();
             }
 
             _needsReenter = false;
@@ -353,17 +368,53 @@ namespace AI003.Net
                 foreach (var token in events)
                 {
                     string type = token["type"]?.ToString();
-                    if (type == "hit")
+                    string source = token["source"]?.ToString();
+                    string target = token["target"]?.ToString();
+                    int damage = token["damage"]?.Value<int>() ?? 0;
+
+                    switch (type)
                     {
-                        _lastEvent = "hit!";
-                    }
-                    else if (type == "death")
-                    {
-                        _lastEvent = "died - respawning";
-                    }
-                    else if (type == "respawn")
-                    {
-                        _lastEvent = "respawned";
+                        case "attack":
+                            if (source == _playerId)
+                            {
+                                _localAttackUntil = Time.unscaledTime + 0.18f;
+                            }
+                            else if (source != null && _remotes.TryGetValue(source, out RemoteAvatar attacker) && attacker != null)
+                            {
+                                attacker.TriggerAttack();
+                            }
+                            break;
+
+                        case "hit":
+                            _lastEvent = "hit!";
+                            if (target == _playerId)
+                            {
+                                _localHitUntil = Time.unscaledTime + 0.25f;
+                                if (_local != null) AddPopup(_local.transform.position, "-" + damage);
+                            }
+                            else if (target != null && _remotes.TryGetValue(target, out RemoteAvatar victim) && victim != null)
+                            {
+                                victim.TriggerHit();
+                                AddPopup(victim.TargetPosition, "-" + damage);
+                            }
+                            break;
+
+                        case "death":
+                            _lastEvent = "died - respawning";
+                            if (target != _playerId && target != null &&
+                                _remotes.TryGetValue(target, out RemoteAvatar dead) && dead != null)
+                            {
+                                dead.SetAlive(false);
+                            }
+                            break;
+
+                        case "respawn":
+                            _lastEvent = "respawned";
+                            if (source != null && _remotes.TryGetValue(source, out RemoteAvatar reborn) && reborn != null)
+                            {
+                                reborn.SetAlive(true);
+                            }
+                            break;
                     }
                     _lastEventUntil = Time.unscaledTime + 1.2f;
                 }
@@ -436,6 +487,14 @@ namespace AI003.Net
             _local.transform.position = _predictedPos;
             float yaw = YawFromFacing(_facingX, _facingZ);
             _local.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+
+            // Attack lunge: a short forward nudge on top of the predicted position.
+            if (Time.unscaledTime < _localAttackUntil)
+            {
+                float progress = 1f - (_localAttackUntil - Time.unscaledTime) / 0.18f;
+                _local.transform.position += Quaternion.Euler(0f, yaw, 0f) * Vector3.forward
+                                             * (Mathf.Sin(progress * Mathf.PI) * 0.35f);
+            }
 
             if (_localAnimator != null)
             {
@@ -552,6 +611,53 @@ namespace AI003.Net
             _connection.Send(new Envelope { Type = "room.input", Seq = _connection.NextSeq(), Body = body });
         }
 
+        private void AddPopup(Vector3 world, string text)
+        {
+            _popups.Add(new DamagePopup
+            {
+                World = world + Vector3.up * 2f,
+                Text = text,
+                Until = Time.unscaledTime + 1f
+            });
+        }
+
+        private void BuildArena()
+        {
+            if (_arenaRoot != null) return;
+
+            _arenaRoot = new GameObject("[AI003] Arena");
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            material.SetColor("_BaseColor", new Color(0.95f, 0.75f, 0.15f));
+            material.SetFloat("_Smoothness", 0.25f);
+
+            float half = _arenaHalfMeters;
+            for (int i = 0; i < 4; i++)
+            {
+                bool horizontal = i < 2;
+                float offset = i % 2 == 0 ? half : -half;
+                GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                wall.name = horizontal
+                    ? (offset > 0 ? "wall_north" : "wall_south")
+                    : (offset > 0 ? "wall_east" : "wall_west");
+                wall.transform.SetParent(_arenaRoot.transform, true);
+                wall.transform.position = new Vector3(
+                    _center.x + (horizontal ? 0f : offset),
+                    _center.y + 0.35f,
+                    _center.z + (horizontal ? offset : 0f));
+                wall.transform.localScale = horizontal
+                    ? new Vector3(half * 2f + 0.4f, 0.7f, 0.2f)
+                    : new Vector3(0.2f, 0.7f, half * 2f + 0.4f);
+                Destroy(wall.GetComponent<Collider>());
+                wall.GetComponent<MeshRenderer>().sharedMaterial = material;
+            }
+        }
+
+        private void DestroyArena()
+        {
+            if (_arenaRoot != null) Destroy(_arenaRoot);
+            _arenaRoot = null;
+        }
+
         private Vector3 ToWorld(float xMeters, float zMeters)
         {
             float x = _center.x + xMeters;
@@ -585,6 +691,10 @@ namespace AI003.Net
             }
             _remotes.Clear();
             _lastPositions.Clear();
+            _popups.Clear();
+            DestroyArena();
+            _localAttackUntil = 0f;
+            _localHitUntil = 0f;
 
             if (_local != null) _local.enabled = true;
             WorldSyncClient.EnsureExists().Resume();
@@ -617,6 +727,51 @@ namespace AI003.Net
                 $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {_predictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
             GUI.Label(new Rect(16f, Screen.height - 44f, 760f, 24f),
                 $"WASD / arrows move   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
+
+            float now = Time.unscaledTime;
+
+            // Red vignette when the local fighter takes a hit.
+            if (now < _localHitUntil)
+            {
+                float alpha = (_localHitUntil - now) / 0.25f * 0.3f;
+                GUI.color = new Color(1f, 0.1f, 0.1f, alpha);
+                GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
+
+            // Damage numbers projected from world space.
+            var camera = Camera.main;
+            if (camera != null)
+            {
+                for (int i = _popups.Count - 1; i >= 0; i--)
+                {
+                    DamagePopup popup = _popups[i];
+                    if (now >= popup.Until)
+                    {
+                        _popups.RemoveAt(i);
+                        continue;
+                    }
+
+                    float remaining = popup.Until - now;
+                    Vector3 screen = camera.WorldToScreenPoint(popup.World + Vector3.up * (1f - remaining) * 0.8f);
+                    if (screen.z <= 0f) continue;
+
+                    GUI.color = new Color(1f, 0.85f, 0.2f, Mathf.Clamp01(remaining));
+                    GUI.Label(new Rect(screen.x - 24f, Screen.height - screen.y - 12f, 96f, 24f), popup.Text, _style);
+                    GUI.color = Color.white;
+                }
+            }
+
+            if (Dead)
+            {
+                var big = new GUIStyle(_style)
+                {
+                    fontSize = Mathf.Max(20, Screen.height / 24),
+                    alignment = TextAnchor.MiddleCenter
+                };
+                big.normal.textColor = new Color(1f, 0.35f, 0.3f, 0.95f);
+                GUI.Label(new Rect(0f, Screen.height * 0.35f, Screen.width, 40f), "RESPAWNING...", big);
+            }
         }
     }
 }

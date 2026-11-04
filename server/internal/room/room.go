@@ -402,6 +402,8 @@ func (r *Room) stepPlayer(p *Player, events *[]Event) {
 		return
 	}
 
+	// Broadcast the swing even when it misses, so clients can play the animation.
+	*events = append(*events, Event{Type: "attack", Source: p.ID})
 	if target := r.pickTarget(p); target != nil {
 		target.HP -= AttackDamage
 		*events = append(*events, Event{Type: "hit", Source: p.ID, Target: target.ID, Damage: AttackDamage})

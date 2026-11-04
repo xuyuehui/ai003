@@ -61,6 +61,25 @@ void ARemotePlayer::ApplySnapshot(const FVector& LocationCm, float Yaw, const FS
 	PlayAnim(TargetAnim);
 }
 
+void ARemotePlayer::TriggerAttack()
+{
+	AttackUntil = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() + 0.18f : 0.f;
+}
+
+void ARemotePlayer::TriggerHit()
+{
+	HitUntil = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() + 0.15f : 0.f;
+}
+
+void ARemotePlayer::SetAlive(bool bInAlive)
+{
+	if (!bInAlive && bAlive && GetWorld() != nullptr)
+	{
+		DeathAt = GetWorld()->GetTimeSeconds();
+	}
+	bAlive = bInAlive;
+}
+
 void ARemotePlayer::PlayAnim(const FString& AnimName)
 {
 	if (Mesh == nullptr || IdleSequence == nullptr || AnimName == CurrentAnim)
@@ -102,12 +121,33 @@ void ARemotePlayer::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	SetActorLocation(FMath::VInterpTo(GetActorLocation(), TargetLocation, DeltaSeconds, 12.f));
+	const float Now = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.f;
+
+	FVector Target = TargetLocation;
+	if (Now < AttackUntil)
+	{
+		const float Progress = 1.f - (AttackUntil - Now) / 0.18f;
+		Target += FRotator(0.f, TargetYaw, 0.f).Vector() * (FMath::Sin(Progress * PI) * 35.f);
+	}
+	SetActorLocation(FMath::VInterpTo(GetActorLocation(), Target, DeltaSeconds, 12.f));
+
 	CurrentYaw = FMath::FInterpTo(CurrentYaw, TargetYaw, DeltaSeconds, 12.f);
-	SetActorRotation(FRotator(0.f, CurrentYaw, 0.f));
+	if (bAlive)
+	{
+		SetActorRotation(FRotator(0.f, CurrentYaw, 0.f));
+	}
+	else
+	{
+		const float Collapse = FMath::Clamp((Now - DeathAt) / 0.25f, 0.f, 1.f);
+		SetActorRotation(FRotator(FMath::Lerp(0.f, 90.f, Collapse), CurrentYaw, 0.f));
+	}
+
+	// Hit feedback without material assets: a short scale pulse.
+	const float Pulse = Now < HitUntil ? 1.08f : 1.f;
+	SetActorScale3D(FVector(Pulse));
 
 	if (Mesh != nullptr && CurrentSequence != nullptr)
 	{
-		Mesh->SetPlayRate(PlayRate);
+		Mesh->SetPlayRate(bAlive ? PlayRate : 0.f);
 	}
 }

@@ -238,7 +238,9 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 }
 ```
 
-`events` 取值：`hit` / `death` / `respawn`。断线或 `room.leave` 后该玩家从下一帧消失。
+`events` 取值：`attack` / `hit` / `death` / `respawn`。`attack` 在每次真正出拳时广播
+（命中或落空都有），客户端据此播放攻击动作；`hit` 带 `damage`。断线或 `room.leave` 后
+该玩家从下一帧消失。
 
 ### `room.leave`（客户端 → 服务器）/ `room.left`（服务器 → 客户端）
 
