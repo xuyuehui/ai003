@@ -1,0 +1,50 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    name: Go tests + headless demo
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache: true
+          cache-dependency-path: server/go.sum
+
+      - name: Build, vet, test
+        working-directory: server
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+
+      - name: Headless demo scenario (two clients + metrics baseline)
+        shell: pwsh
+        working-directory: server
+        run: |
+          go build -o bin/ai003-server.exe ./cmd/server
+          $server = Start-Process -FilePath .\bin\ai003-server.exe -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 40 -and -not $ready; $i++) {
+              try {
+                Invoke-RestMethod 'http://127.0.0.1:8080/healthz' -TimeoutSec 1 | Out-Null
+                $ready = $true
+              }
+              catch { Start-Sleep -Milliseconds 250 }
+            }
+            if (-not $ready) { throw 'gateway did not become healthy' }
+
+            ..\scripts\demo-scenario.cmd -Seconds 6
+            if ($LASTEXITCODE -ne 0) { throw 'demo scenario failed' }
+          }
+          finally {
+            if (-not $server.HasExited) { $server.Kill() }
+          }

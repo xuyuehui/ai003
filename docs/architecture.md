@@ -65,6 +65,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | `GET /demo` | 房间列表、世界玩家数、消息/字节量、world snapshot、room frame、`attack/hit/death/respawn` 计数、goroutines |
 | `scripts\demo-status.cmd` | 上述指标的易读输出（`-Json` 机器可读） |
 | `cmd/democlient` | 无头客户端场景的 JSON 摘要：帧数、首末 tick、最大间隔、HP、事件 |
+| `demo/baseline.json` | 指标基线（帧率、tick 间隔、出拳/命中速率），`-UpdateBaseline` 更新 |
 | 客户端 HUD | `tick / pred / corr / 误差 / hp / fighters / roomId` |
 
 ## 6. 验证矩阵
@@ -79,8 +80,17 @@ cd server; go build ./...; go vet ./...; go test ./... -count=1
 .\scripts\smoke-ue5-world.cmd -SkipBuild
 
 # 演示链路（需服务器已启动）
-.\scripts\demo-scenario.cmd -Seconds 8
+.\scripts\demo-scenario.cmd -Seconds 8          # 与 demo/baseline.json 对比
+.\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
+
+# 全链路（可选跳过引擎）
+.\scripts\smoke-all.cmd -SkipUnity -SkipUE
 ```
+
+`demo/baseline.json` 保存帧率、最大 tick 间隔、出拳/命中速率、房间帧速率；
+`demo-scenario` 默认按**每秒速率**与基线比较（±50% 容差、tick 间隔 ≤2），
+CI 由 [.github/workflows/verify.yml](../.github/workflows/verify.yml) 在
+windows-latest 上跑 Go 测试 + 无头演示（引擎不在 CI 内）。
 
 ## 7. 非目标
 

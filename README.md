@@ -22,7 +22,7 @@
 | 房间帧同步战斗 | 20 Hz 整数毫米模拟、`room.frame`、帧间隔统计 |
 | 客户端预测 / 回滚 | 本地领先 3 ticks，HUD 显示 `pred / corr / 误差` |
 | 断线重连 | 30 s 状态保留，同 `clientId` 回到原房间 |
-| 自动化验证 | `smoke-all`、PlayMode、UE 冒烟、`demo-scenario` |
+| 自动化验证 | `smoke-all`、PlayMode、UE 冒烟、`demo-scenario` + 基线回归、GitHub Actions |
 
 **非目标（当前阶段）**：技能树、任务、经济、匹配大厅等玩法深度；只做到"足以验证技术"。
 
@@ -41,10 +41,16 @@
 # 3) 只看实时指标
 .\scripts\demo-status.cmd          # 人类可读
 .\scripts\demo-status.cmd -Json   # 机器可读
+
+# 4) 指标回归：首次生成基线，之后每次对比
+.\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
+.\scripts\demo-scenario.cmd -Seconds 8
 ```
 
 输出包含：两端是否进同一房间、收到的帧数、最大 tick 间隔、命中/死亡事件、
-`/demo` 的消息量/字节量/房间帧数。这条链路完全不依赖 Unity 或 UE，可在 CI 里跑。
+`/demo` 的消息量/字节量/房间帧数。这条链路完全不依赖 Unity 或 UE，可在 CI 里跑
+（见 [.github/workflows/verify.yml](.github/workflows/verify.yml)），基线保存在
+[demo/baseline.json](demo/baseline.json)。
 
 ## 已实现的技术点
 

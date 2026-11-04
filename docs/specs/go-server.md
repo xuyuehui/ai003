@@ -101,6 +101,8 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - 表驱动优先；HTTP/WS 用 `httptest`，不连真实端口。
 - 每个新报文、错误分支至少一个测试。
 - `/demo` 指标端点有集成测试：初始为空、进房后房间/帧计数增长。
+- CI（`.github/workflows/verify.yml`，windows-latest）：`go build/vet/test` +
+  `scripts/demo-scenario.cmd -Seconds 6`（与 `demo/baseline.json` 比较）。
 - 最低门禁：
 
 ```powershell

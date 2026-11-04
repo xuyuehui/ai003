@@ -65,6 +65,69 @@ type summary struct {
 	DurationSecs float64        `json:"durationSecs"`
 }
 
+// sharedPositions lets the input goroutine aim at the nearest player without
+// assuming spawn slots (join order is racy when both clients start together).
+type sharedPositions struct {
+	mu  sync.Mutex
+	pos map[string][2]int64
+}
+
+func newSharedPositions() *sharedPositions {
+	return &sharedPositions{pos: make(map[string][2]int64)}
+}
+
+func (s *sharedPositions) set(id string, x, z int64) {
+	s.mu.Lock()
+	s.pos[id] = [2]int64{x, z}
+	s.mu.Unlock()
+}
+
+// sparCommand walks toward the nearest other player and swings once in range.
+func (s *sharedPositions) sparCommand(me string) (int, int, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	self, ok := s.pos[me]
+	if !ok {
+		return 1, 0, false
+	}
+
+	var best int64 = 1 << 62
+	var tx, tz int64
+	found := false
+	for id, p := range s.pos {
+		if id == me {
+			continue
+		}
+		dx, dz := p[0]-self[0], p[1]-self[1]
+		if d := dx*dx + dz*dz; d < best {
+			best = d
+			tx, tz = p[0], p[1]
+			found = true
+		}
+	}
+	if !found {
+		return 0, 0, false
+	}
+
+	dx, dz := tx-self[0], tz-self[1]
+	if dx*dx+dz*dz <= 2500*2500 {
+		return 0, 0, true
+	}
+	return sign(dx), sign(dz), false
+}
+
+func sign(v int64) int {
+	switch {
+	case v > 0:
+		return 1
+	case v < 0:
+		return -1
+	default:
+		return 0
+	}
+}
+
 func main() {
 	url := flag.String("url", "ws://127.0.0.1:8080/ws", "gateway websocket url")
 	name := flag.String("name", "demo", "player name")
@@ -72,15 +135,16 @@ func main() {
 	clientID := flag.String("clientId", "", "persistent client id (empty = server default)")
 	seconds := flag.Int("seconds", 8, "scenario duration")
 	still := flag.Bool("still", false, "stand still and only swing")
+	spar := flag.Bool("spar", false, "walk two metres forward, then keep swinging (hits the still partner)")
 	flag.Parse()
 
-	if err := run(*url, *name, *room, *clientID, *seconds, *still); err != nil {
+	if err := run(*url, *name, *room, *clientID, *seconds, *still, *spar); err != nil {
 		fmt.Fprintf(os.Stderr, "democlient: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(url, name, roomID, clientID string, seconds int, still bool) error {
+func run(url, name, roomID, clientID string, seconds int, still, spar bool) error {
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", url, err)
@@ -139,6 +203,7 @@ func run(url, name, roomID, clientID string, seconds int, still bool) error {
 
 	var currentTick atomic.Uint64
 	currentTick.Store(entered.Tick)
+	shared := newSharedPositions()
 
 	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
 	ticker := time.NewTicker(time.Second / time.Duration(max(1, entered.TickRate)))
@@ -155,12 +220,22 @@ func run(url, name, roomID, clientID string, seconds int, still bool) error {
 			step++
 			tick := currentTick.Load() + 2
 			dx, dz := direction(step, entered.TickRate)
-			if still {
-				dx, dz = 0, 0
-			}
 			buttons := 0
 			if step%30 < 6 {
 				buttons = 1
+			}
+			if still {
+				dx, dz = 0, 0
+				buttons = 1
+			}
+			if spar {
+				var attack bool
+				dx, dz, attack = shared.sparCommand(entered.PlayerID)
+				if attack {
+					buttons = 1
+				} else {
+					buttons = 0
+				}
 			}
 			if err := send("room.input", map[string]any{
 				"tick": tick, "dx": dx, "dz": dz, "buttons": buttons,
@@ -211,6 +286,7 @@ func run(url, name, roomID, clientID string, seconds int, still bool) error {
 			result.PlayersSeen = len(frame.Players)
 		}
 		for _, player := range frame.Players {
+			shared.set(player.ID, player.X, player.Z)
 			if player.ID == entered.PlayerID {
 				result.FinalHP = player.HP
 			}

@@ -10,7 +10,8 @@ param(
     [switch]$SkipPlayMode,
     [switch]$SkipUE,
     [switch]$SkipUEWorld,
-    [switch]$SkipGoTests
+    [switch]$SkipGoTests,
+    [switch]$SkipDemo
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,6 +68,15 @@ try {
         $results['go-client'] = 'PASS'
     }
     finally { Pop-Location }
+
+    if (-not $SkipDemo) {
+        Write-Host '==> Demo scenario (headless clients + metrics baseline)' -ForegroundColor Cyan
+        $baseUrl = ($Url -replace '^ws', 'http') -replace '/ws$', ''
+        & (Join-Path $scripts 'demo-scenario.ps1') -Seconds 6 -BaseUrl $baseUrl
+        if ($LASTEXITCODE -ne 0) { throw 'demo scenario failed' }
+        $results['demo'] = 'PASS'
+    }
+    else { $results['demo'] = 'SKIP' }
 
     if (-not $SkipUnity) {
         & (Join-Path $scripts 'smoke-unity.ps1') -Unity $Unity -Url $Url
