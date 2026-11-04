@@ -70,6 +70,7 @@ type Server struct {
 	roomMu   sync.Mutex
 	roomSubs map[string]roomSub
 	sessions map[string]sessionInfo // session id -> identity + room
+	metrics  *metricsState
 
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -92,7 +93,7 @@ func New(logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s := &Server{log: logger, mux: http.NewServeMux()}
+	s := &Server{log: logger, mux: http.NewServeMux(), metrics: newMetrics()}
 	s.up = websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
@@ -100,6 +101,7 @@ func New(logger *slog.Logger) *Server {
 		CheckOrigin: func(*http.Request) bool { return true },
 	}
 	s.hub = NewHub(logger, SnapshotRate)
+	s.hub.metrics = s.metrics
 	s.hub.Start()
 	s.rooms = room.NewManager(room.DefaultCapacity)
 	s.roomSubs = make(map[string]roomSub)
@@ -107,6 +109,7 @@ func New(logger *slog.Logger) *Server {
 	s.stop = make(chan struct{})
 	go s.roomLoop()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
+	s.mux.HandleFunc("GET /demo", s.handleDemo)
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	return s
 }
@@ -132,6 +135,7 @@ func (s *Server) roomLoop() {
 				if !ok || len(frame.Players) == 0 {
 					continue
 				}
+				s.metrics.noteRoomFrame(frame)
 
 				s.roomMu.Lock()
 				subs := make([]func(Message), 0, len(s.roomSubs))
@@ -222,7 +226,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 			return err
 		}
-		return conn.WriteJSON(m)
+		if err := conn.WriteJSON(m); err != nil {
+			return err
+		}
+		s.metrics.noteMessage(m)
+		return nil
 	}
 
 	welcome, err := NewMessage("welcome", 0, map[string]any{

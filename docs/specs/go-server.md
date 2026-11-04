@@ -17,8 +17,9 @@
 ```
 cmd/server/          网关进程（唯一对外入口）
 cmd/pingclient/      命令行冒烟客户端
+cmd/democlient/      无头演示客户端（进房/输入/统计，输出 JSON 摘要）
 cmd/worldgen/        世界生成器
-internal/gateway/    WebSocket 网关 + 测试
+internal/gateway/    WebSocket 网关 + 测试 + /demo 指标
 internal/room/       房间确定性模拟（帧同步战斗）+ 测试
 internal/worldgen/   地形/群系/颜色 + 测试
 ```
@@ -99,6 +100,7 @@ internal/worldgen/   地形/群系/颜色 + 测试
 
 - 表驱动优先；HTTP/WS 用 `httptest`，不连真实端口。
 - 每个新报文、错误分支至少一个测试。
+- `/demo` 指标端点有集成测试：初始为空、进房后房间/帧计数增长。
 - 最低门禁：
 
 ```powershell
@@ -115,6 +117,10 @@ go test ./... -count=1
 
 # 冒烟
 go run ./cmd/pingclient -url ws://127.0.0.1:8080/ws -n 3
+
+# 无头技术演示（另开窗口；两个客户端 + 指标）
+.\scripts\demo-scenario.cmd -Seconds 8
+.\scripts\demo-status.cmd -Json
 
 # 重新生成世界
 go run ./cmd/worldgen -out ..\world

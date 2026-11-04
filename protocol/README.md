@@ -13,6 +13,33 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 | 健康检查 | `GET http://127.0.0.1:8080/healthz` |
 | 编码 | JSON，字段名小驼峰 |
 
+## 观测端点（HTTP，不属于 WebSocket 协议）
+
+| 端点 | 用途 |
+| --- | --- |
+| `GET /healthz` | 存活与版本：`status`、`version`、`protocolVersion`、`serverTime` |
+| `GET /demo` | 技术演示指标：房间、世界玩家数、消息/字节量、world snapshot、room frame、事件计数 |
+
+`/demo` 示例：
+
+```json
+{
+  "service": "ai003-server",
+  "protocolVersion": 3,
+  "uptimeSeconds": 59.2,
+  "goVersion": "go1.26.3",
+  "goroutines": 7,
+  "worldPlayers": 0,
+  "rooms": [{ "id": "arena-1", "players": 2, "capacity": 8, "tick": 580 }],
+  "stats": {
+    "messagesOut": 326, "bytesOut": 124133,
+    "worldSnapshots": 0, "roomFrames": 580,
+    "attackEvents": 11, "hitEvents": 1,
+    "deathEvents": 0, "respawnEvents": 0
+  }
+}
+```
+
 ## 信封
 
 ```json

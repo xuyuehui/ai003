@@ -212,6 +212,59 @@ func TestRoomListReportsRooms(t *testing.T) {
 	}
 }
 
+func TestDemoEndpointReportsRoomsAndStats(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	res, err := httpServer.Client().Get(httpServer.URL + "/demo")
+	if err != nil {
+		t.Fatalf("GET /demo: %v", err)
+	}
+	defer res.Body.Close()
+
+	var body struct {
+		ProtocolVersion int `json:"protocolVersion"`
+		Rooms           []struct {
+			ID      string `json:"id"`
+			Players int    `json:"players"`
+		} `json:"rooms"`
+		Stats struct {
+			RoomFrames uint64 `json:"roomFrames"`
+		} `json:"stats"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /demo: %v", err)
+	}
+	if body.ProtocolVersion != ProtocolVersion {
+		t.Fatalf("protocolVersion = %d, want %d", body.ProtocolVersion, ProtocolVersion)
+	}
+	if len(body.Rooms) != 0 {
+		t.Fatalf("rooms before join = %+v, want empty", body.Rooms)
+	}
+
+	conn := dial(t, httpServer.URL)
+	readWelcome(t, conn)
+	enterRoom(t, conn, 10)
+	waitRoomFrame(t, conn, 3*time.Second, func(f room.Frame) bool { return len(f.Players) == 1 })
+
+	res2, err := httpServer.Client().Get(httpServer.URL + "/demo")
+	if err != nil {
+		t.Fatalf("GET /demo (after join): %v", err)
+	}
+	defer res2.Body.Close()
+	if err := json.NewDecoder(res2.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /demo (after join): %v", err)
+	}
+	if len(body.Rooms) != 1 || body.Rooms[0].Players != 1 {
+		t.Fatalf("rooms after join = %+v", body.Rooms)
+	}
+	if body.Stats.RoomFrames == 0 {
+		t.Fatal("roomFrames did not increase")
+	}
+}
+
 func enterRoom(t *testing.T, conn messageReader, seq int64) string {
 	t.Helper()
 	_, playerID := enterRoomAs(t, conn, seq, "")

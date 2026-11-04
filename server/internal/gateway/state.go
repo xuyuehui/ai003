@@ -74,6 +74,7 @@ type Snapshot struct {
 type Hub struct {
 	log      *slog.Logger
 	interval time.Duration
+	metrics  *metricsState
 
 	mu      sync.RWMutex
 	players map[string]*Player
@@ -141,9 +142,19 @@ func (h *Hub) broadcast() {
 		h.log.Error("encode snapshot", "error", err)
 		return
 	}
+	if h.metrics != nil {
+		h.metrics.noteWorldSnapshot()
+	}
 	for _, send := range subs {
 		send(msg)
 	}
+}
+
+// Count returns how many players are currently joined to the world.
+func (h *Hub) Count() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.players)
 }
 
 // Join registers a player. An empty name falls back to the client kind.
