@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.IO;
 using AI003.World;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace AI003.EditorTools
 {
@@ -76,6 +77,21 @@ namespace AI003.EditorTools
             skybox.SetFloat("_Exposure", 1.7f);
             RenderSettings.skybox = skybox;
 
+            // ACES tonemapping in a global volume so both engines use a filmic
+            // curve instead of Unity's default linear-to-sRGB look.
+            var volumeObject = new GameObject("[AI003][DEMO] Volume");
+            var volume = volumeObject.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 1f;
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            volume.profile = profile;
+            var tonemapping = profile.Add<Tonemapping>(true);
+            tonemapping.mode.overrideState = true;
+            tonemapping.mode.value = TonemappingMode.ACES;
+            var colorAdjustments = profile.Add<ColorAdjustments>(true);
+            colorAdjustments.postExposure.overrideState = true;
+            colorAdjustments.postExposure.value = 0f;
+
             GameObject prefab = Resources.Load<GameObject>(CharacterPrefab);
             if (prefab == null)
             {
@@ -103,6 +119,7 @@ namespace AI003.EditorTools
             camera.clearFlags = CameraClearFlags.Skybox;
             camera.transform.position = data.Spawn + new Vector3(0f, 3.2f, -6f);
             camera.transform.LookAt(data.Spawn + new Vector3(0f, 1.2f, 0f));
+            camera.GetUniversalAdditionalCameraData().renderPostProcessing = true;
 
             string path = Path.Combine(artifacts, "unity.png");
             var target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
@@ -120,6 +137,7 @@ namespace AI003.EditorTools
             UnityEngine.Object.DestroyImmediate(target);
             UnityEngine.Object.DestroyImmediate(texture);
             UnityEngine.Object.DestroyImmediate(cameraObject);
+            UnityEngine.Object.DestroyImmediate(volumeObject);
             UnityEngine.Object.DestroyImmediate(player);
             UnityEngine.Object.DestroyImmediate(sunObject);
             UnityEngine.Object.DestroyImmediate(root);

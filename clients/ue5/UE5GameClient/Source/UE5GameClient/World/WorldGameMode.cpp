@@ -1,4 +1,4 @@
-#include "World/WorldGameMode.h"
+﻿#include "World/WorldGameMode.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -9,6 +9,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
+#include "Engine/PostProcessVolume.h"
 #include "Engine/SkyLight.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -223,6 +224,26 @@ void AWorldGameMode::BeginDemoShot()
 		}
 	}
 
+	// Deterministic exposure via an unbound post-process volume instead of the
+	// camera component, which rendered black with AEM_Manual.
+	APostProcessVolume* Volume = World->SpawnActor<APostProcessVolume>();
+	if (Volume != nullptr)
+	{
+		Volume->bUnbound = true;
+		Volume->BlendWeight = 1.f;
+		FPostProcessSettings& PostProcess = Volume->Settings;
+		PostProcess.bOverride_AutoExposureMethod = true;
+		PostProcess.AutoExposureMethod = EAutoExposureMethod::AEM_Histogram;
+		PostProcess.bOverride_AutoExposureBias = true;
+		PostProcess.AutoExposureBias = 0.f;
+		PostProcess.bOverride_AutoExposureMinBrightness = true;
+		PostProcess.AutoExposureMinBrightness = 0.8f;
+		PostProcess.bOverride_AutoExposureMaxBrightness = true;
+		PostProcess.AutoExposureMaxBrightness = 0.8f;
+		PostProcess.bOverride_ToneCurveAmount = true;
+		PostProcess.ToneCurveAmount = 1.f;
+	}
+
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(DemoShotPath), true);
 	FScreenshotRequest::RequestScreenshot(DemoShotPath, false, false);
 	UE_LOG(LogTemp, Display, TEXT("[AI003][DEMO-SHOT] requested %s"), *DemoShotPath);
@@ -322,3 +343,5 @@ void AWorldGameMode::ExitWith(int32 Code)
 	UE_LOG(LogTemp, Display, TEXT("[AI003] exiting with code %d"), Code);
 	FPlatformMisc::RequestExitWithStatus(false, static_cast<uint8>(Code));
 }
+
+

@@ -101,6 +101,31 @@ if ((Test-Path $unityShot) -and (Test-Path $ueShot)) {
     $unityMean = Get-MeanBrightness $unityShot
     $ueMean = Get-MeanBrightness $ueShot
     Write-Host ("brightness: Unity {0} / UE {1} (delta {2})" -f $unityMean, $ueMean, [Math]::Round($unityMean - $ueMean, 1))
+
+    $leftBitmap = [System.Drawing.Bitmap]::FromFile($unityShot)
+    $rightBitmap = [System.Drawing.Bitmap]::FromFile($ueShot)
+    try {
+        $diffSum = 0.0
+        $samples = 0
+        $close = 0
+        $step = 8
+        for ($y = 0; $y -lt [Math]::Min($leftBitmap.Height, $rightBitmap.Height); $y += $step) {
+            for ($x = 0; $x -lt [Math]::Min($leftBitmap.Width, $rightBitmap.Width); $x += $step) {
+                $a = $leftBitmap.GetPixel($x, $y)
+                $b = $rightBitmap.GetPixel($x, $y)
+                $diff = ([Math]::Abs($a.R - $b.R) + [Math]::Abs($a.G - $b.G) + [Math]::Abs($a.B - $b.B)) / 3.0
+                $diffSum += $diff
+                $samples++
+                if ($diff -le 24) { $close++ }
+            }
+        }
+        Write-Host ("pixel diff: mean {0:N1}/255   within 24: {1:N1}%   ({2} samples)" -f `
+            ($diffSum / $samples), (100.0 * $close / $samples), $samples)
+    }
+    finally {
+        $leftBitmap.Dispose()
+        $rightBitmap.Dispose()
+    }
 }
 
 if (-not $NoPublish) {
