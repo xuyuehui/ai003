@@ -69,7 +69,10 @@
 
 ![Unity vs UE5 diff](docs/images/demo-diff.png)
 
-热力图中黑色表示一致、红/黄表示差异大：当前主要差异在天空渐变与角色边缘。
+热力图中黑色表示一致、红/黄表示差异大。**对照还暴露了一个真问题**：UE 的
+`(x, z, y)` 坐标映射是反射（行列式为负），导致地形相对 Unity **左右镜像**；
+相机位姿日志已确认两端在世界坐标中完全一致，因此问题在映射本身，修复计划见
+[docs/architecture.md](docs/architecture.md)。
 `demo-compare` 支持阈值（`-MaxBrightnessDelta 8 -MinWithin24 80`），
 `smoke-all -WithCompare` 会用这组阈值做回归。
 

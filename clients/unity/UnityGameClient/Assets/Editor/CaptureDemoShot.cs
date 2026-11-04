@@ -120,6 +120,8 @@ namespace AI003.EditorTools
             camera.transform.position = data.Spawn + new Vector3(0f, 3.2f, -6f);
             camera.transform.LookAt(data.Spawn + new Vector3(0f, 1.2f, 0f));
             camera.GetUniversalAdditionalCameraData().renderPostProcessing = true;
+            Debug.Log($"[AI003][DEMO-SHOT] spawn={data.Spawn} cam={camera.transform.position} " +
+                      $"rot={camera.transform.eulerAngles} fov={camera.fieldOfView}");
 
             string path = Path.Combine(artifacts, "unity.png");
             var target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };

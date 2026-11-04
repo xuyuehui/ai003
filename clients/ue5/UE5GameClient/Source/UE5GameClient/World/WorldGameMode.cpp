@@ -1,4 +1,4 @@
-﻿#include "World/WorldGameMode.h"
+#include "World/WorldGameMode.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -215,9 +215,20 @@ void AWorldGameMode::BeginDemoShot()
 	const FVector LookAt = Ground + FVector(0.f, 0.f, 120.f);
 	const FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
 
+	UE_LOG(LogTemp, Display,
+		TEXT("[AI003][DEMO-SHOT] ground=(%.0f,%.0f,%.0f) cam=(%.0f,%.0f,%.0f) rot=(%.2f,%.2f,%.2f) fov=%.2f"),
+		Ground.X, Ground.Y, Ground.Z, CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
+		CameraRotation.Pitch, CameraRotation.Yaw, CameraRotation.Roll, 93.77);
+
 	ACameraActor* Camera = World->SpawnActor<ACameraActor>(CameraLocation, CameraRotation);
 	if (Camera != nullptr)
 	{
+		// Unity's fieldOfView is vertical; Unreal's is horizontal by default.
+		// 62° vertical at 16:9 ≈ 93.77° horizontal.
+		if (UCameraComponent* CameraComponent = Camera->GetCameraComponent())
+		{
+			CameraComponent->SetFieldOfView(93.77f);
+		}
 		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 		{
 			PC->SetViewTarget(Camera);
@@ -245,11 +256,26 @@ void AWorldGameMode::BeginDemoShot()
 	}
 
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(DemoShotPath), true);
-	FScreenshotRequest::RequestScreenshot(DemoShotPath, false, false);
-	UE_LOG(LogTemp, Display, TEXT("[AI003][DEMO-SHOT] requested %s"), *DemoShotPath);
-
-	GetWorldTimerManager().SetTimer(
-		AutomationTimer, FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 1.5f, false);
+	// Give the view target one frame (or a few) to take effect before capturing.
+	GetWorldTimerManager().SetTimer(AutomationTimer, FTimerDelegate::CreateLambda([this]()
+	{
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+		{
+			if (APlayerCameraManager* CameraManager = PC->PlayerCameraManager)
+			{
+				const FVector ViewLocation = CameraManager->GetCameraLocation();
+				const FRotator ViewRotation = CameraManager->GetCameraRotation();
+				UE_LOG(LogTemp, Display,
+					TEXT("[AI003][DEMO-SHOT] view=(%.0f,%.0f,%.0f) rot=(%.2f,%.2f,%.2f) fov=%.2f"),
+					ViewLocation.X, ViewLocation.Y, ViewLocation.Z,
+					ViewRotation.Pitch, ViewRotation.Yaw, ViewRotation.Roll, CameraManager->GetFOVAngle());
+			}
+		}
+		FScreenshotRequest::RequestScreenshot(DemoShotPath, false, false);
+		UE_LOG(LogTemp, Display, TEXT("[AI003][DEMO-SHOT] requested %s"), *DemoShotPath);
+		GetWorldTimerManager().SetTimer(
+			AutomationTimer, FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 1.5f, false);
+	}), 0.5f, false);
 }
 
 void AWorldGameMode::BeginAutomation()
