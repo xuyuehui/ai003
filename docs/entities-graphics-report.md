@@ -26,7 +26,10 @@ URP Lit 的 DOTS instancing 是官方支持的，256 个 chunk 一起渲染不�
 
 ## 限制
 
-- **批处理**（`-batchmode -executeMethod`）不会触发烘焙产物；必须在交互式编辑器完成一次 Open/Close
+- **批处理**：`scripts\bake-unity-terrain.cmd` 用 `RunBatch` 状态机（EditorApplication.update
+  里完成 Open/Close + 重新导入），无需人工点 Inspector
 - 烘焙产物在 `Assets/SceneDependencyCache`（本机生成缓存，已 gitignore）
-- 运行时**流式**地形仍走 GameObject 路径；ECS 流式（BRG 直绘或分块 SubScene）是后续工作
+- 运行时 ECS 地形**渲染流式**：`TerrainEcsStreaming` 按摄像机距离给 256 个烘焙 chunk 加/去
+  `DisableRendering`（900 m 视野；实测 152/256 → 0，见截图）；实体常驻内存，
+  真正的内存流式（分块 SubScene/BRG）仍是后续工作
 - 骨骼角色仍需 DOTS skinning

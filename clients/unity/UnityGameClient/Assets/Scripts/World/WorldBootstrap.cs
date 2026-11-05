@@ -72,6 +72,13 @@ namespace AI003.World
                 return;
             }
             Instance = this;
+
+            // Baked entity terrain (AI003/Bake Terrain SubScene) streams its chunks
+            // by distance; without baked entities the component is a no-op.
+            if (GetComponent<TerrainEcsStreaming>() == null)
+            {
+                gameObject.AddComponent<TerrainEcsStreaming>();
+            }
         }
 
         private void Start()

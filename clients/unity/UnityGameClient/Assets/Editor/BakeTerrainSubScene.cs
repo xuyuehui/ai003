@@ -42,6 +42,75 @@ namespace AI003.EditorTools
             }
         }
 
+        /// <summary>
+        /// Batch-mode entry point. Unity's batch editor does not process the SubScene
+        /// open/close synchronously, so the bake is driven from EditorApplication.update
+        /// after the assets have been regenerated. Run without -quit.
+        /// </summary>
+        public static void RunBatch()
+        {
+            try
+            {
+                string worldScene = Bake();
+                Debug.Log($"[AI003][BAKE-BATCH] assets rebuilt {worldScene}");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[AI003][BAKE-BATCH] asset rebuild failed: {e}");
+                EditorApplication.Exit(1);
+                return;
+            }
+
+            double started = EditorApplication.timeSinceStartup;
+            int step = 0;
+            void Tick()
+            {
+                double elapsed = EditorApplication.timeSinceStartup - started;
+                try
+                {
+                    if (step == 0 && elapsed > 1.0)
+                    {
+                        var scene = EditorSceneManager.OpenScene(WorldScene, OpenSceneMode.Single);
+                        var sub = UnityEngine.Object.FindFirstObjectByType<Unity.Scenes.SubScene>(UnityEngine.FindObjectsInactive.Include);
+                        var openType = System.Type.GetType("Unity.Scenes.Editor.SubSceneUtility, Unity.Scenes.Editor");
+                        openType.GetMethod("EditScene",
+                                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                            .Invoke(null, new object[] { new Unity.Scenes.SubScene[] { sub } });
+                        Debug.Log("[AI003][BAKE-BATCH] subscene opened");
+                        step = 1;
+                    }
+                    else if (step == 1 && elapsed > 3.0)
+                    {
+                        var sub = UnityEngine.Object.FindFirstObjectByType<Unity.Scenes.SubScene>(UnityEngine.FindObjectsInactive.Include);
+                        var closeType = System.Type.GetType("Unity.Scenes.Editor.SubSceneInspectorUtility, Unity.Scenes.Editor");
+                        closeType.GetMethod("CloseSceneWithoutSaving",
+                                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                            .Invoke(null, new object[] { new Unity.Scenes.SubScene[] { sub } });
+                        AssetDatabase.DeleteAsset("Assets/SceneDependencyCache");
+                        AssetDatabase.ImportAsset(ContentScene, ImportAssetOptions.ForceUpdate);
+                        AssetDatabase.Refresh();
+                        Debug.Log("[AI003][BAKE-BATCH] subscene closed, reimport requested");
+                        step = 2;
+                    }
+                    else if (step == 2 && elapsed > 10.0)
+                    {
+                        bool cached = System.IO.Directory.Exists("Assets/SceneDependencyCache");
+                        Debug.Log($"[AI003][BAKE-BATCH] bake cache={cached} -> {(cached ? "PASS" : "FAIL")}");
+                        EditorApplication.update -= Tick;
+                        EditorApplication.Exit(cached ? 0 : 1);
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"[AI003][BAKE-BATCH] failed: {e}");
+                    EditorApplication.update -= Tick;
+                    EditorApplication.Exit(1);
+                }
+            }
+
+            EditorApplication.update += Tick;
+        }
+
         public static string Bake()
         {
             Directory.CreateDirectory(Path.Combine(Application.dataPath, "World/Baked/Meshes"));

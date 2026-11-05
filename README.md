@@ -123,8 +123,11 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
     （513×513 颜色纹理，chunk UV 直接是归一化世界坐标），16×16 = **256 chunk** 全量烘焙为
     `BakedWorld.unity`；Play 下关闭 GameObject 地形后，整张地形（山川/沙漠/海岸）由 ECS 实体渲染
     （[全景截图](docs/images/ecs-terrain-full-baked.png)）
-  - 烘焙触发：交互式 Open/Close `TerrainSubScene`（或菜单 `AI003 → Bake Terrain SubScene`）；
-    批处理 `-batchmode` 不会产生烘焙产物
+  - 烘焙触发：`scripts\bake-unity-terrain.cmd`（批处理状态机，自动 Open/Close + 重导入），
+    或菜单 `AI003 → Bake Terrain SubScene`
+  - 运行时 **ECS 渲染流式**：`TerrainEcsStreaming` 按摄像机距离（900 m）给烘焙 chunk 加/去
+    `DisableRendering`；实测 152/256 → 0（[截图](docs/images/ecs-terrain-runtime-stream.png)）；
+    实体常驻内存，内存级流式仍是后续工作
   - 结论：**静态世界可用 SubScene 烘焙 + URP Lit 渲染**；运行时流式地形仍不走 ECS（默认 GameObject），
     `AI003_TERRAIN_ECS=1` 保留为实验开关。细节见
     [Entities Graphics 复测报告](docs/entities-graphics-report.md)；骨骼角色仍需 DOTS skinning
