@@ -61,7 +61,11 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 ## 4. 世界与渲染
 
 - 数据：`world.json` + `heightmap.f32` + `colors.rgba8` + `biomes.r8`，米制、Y 向上、行优先。
-- 地形：8×8 分块，每块 65×65 顶点；`MeshCollider` 非凸；法线由高度图中心差分。
+- 地形：按 **128 m chunk** 分块（`CellsPerChunk=32`，4 m 格），网格由高度图/顶点色生成；
+  法线由高度图中心差分；只有近处 chunk 有 `MeshCollider`。
+- 流式加载 `TerrainStreaming`：视野 2000 m，LOD0（stride 1，≤700 m）、LOD1（stride 2，≤1400 m）、
+  LOD2（stride 4），离开视野的 chunk 直接隐藏；`WorldStats` 输出 chunks/verts/colliders/耗时。
+  世界尺寸由 `world.json` 决定，2/4/8 km 都用同一套加载逻辑。
 - 顶点色是世界文件里的**线性**值，直接进 shader，不做二次 sRGB 转换。
 - 地形材质 `AI003/TerrainVertexColor`（Forward + DepthOnly + DepthNormals + Fog + 阴影）；
   水用 URP/Lit 透明；角色用 URP/Lit。

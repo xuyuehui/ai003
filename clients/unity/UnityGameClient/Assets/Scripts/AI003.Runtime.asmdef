@@ -4,6 +4,8 @@
     "references": [
         "AI003.Ecs",
         "Unity.Entities",
+        "Unity.Entities.Graphics",
+        "Unity.Rendering",
         "Unity.Transforms",
         "Unity.Mathematics",
         "Unity.Collections",

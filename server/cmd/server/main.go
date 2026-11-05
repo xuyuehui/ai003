@@ -18,6 +18,7 @@ import (
 func main() {
 	addr := flag.String("addr", envOr("AI003_ADDR", "127.0.0.1:8080"), "HTTP listen address")
 	debug := flag.Bool("debug", false, "enable debug logging")
+	worldDir := flag.String("world", envOr("AI003_WORLD_DIR", "../world"), "world metadata directory (world.json)")
 	flag.Parse()
 
 	level := slog.LevelInfo
@@ -27,7 +28,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(logger)
 
-	handler := gateway.New(logger).Handler()
+	handler := gateway.NewWithWorld(logger, *worldDir).Handler()
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           handler,

@@ -111,17 +111,17 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 - **批处理**：`FighterStateUpdateJob`（Burst `IJobEntity`）负责计时、远端插值与倒地，
   `FighterViewSystem` 只做表现。PlayMode 基准（4000 远端，10 次平均）：
   **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
-- **Entities Graphics（两次实测后回退）**：试装 `com.unity.entities.graphics@6.6.0`
-  - 静态网格 + URP Lit 可渲染（[探针截图](docs/images/ecs-graphics-probe.png)）
-  - 地形：给自定义 shader 加 DOTS instancing 后仍为洋红（[证据](docs/images/ecs-terrain-shader-fail.png)）；
-    改用最小 unlit DOTS shader、并把注册推迟到 Start 后，运行时创建的 chunk 实体**完全不被绘制**
-    （[灰色地面证据](docs/images/ecs-terrain-ecs-gray.png)）
-  - 结论：Entities Graphics 与当前 URP 自定义 shader + 运行时实体路径不兼容；骨骼角色还需
-    DOTS skinning。包已移除，地形/角色继续用 GameObject 渲染
+- **Entities Graphics（保留为可选路径）**：`com.unity.entities.graphics@6.6.0`
+  - URP Lit + 运行时实体可渲染（[探针](docs/images/ecs-graphics-probe.png)）
+  - 自定义地形 shader：**单个**手动创建的实体可以正常渲染（绿色 chunk），但
+    `TerrainStreaming` 批量创建/更新同一批实体时不绘制（[证据](docs/images/ecs-terrain-runtime-entities.png)）；
+    早期未开 instancing 时为洋红/灰色（[洋红](docs/images/ecs-terrain-shader-fail.png)、[灰色](docs/images/ecs-terrain-ecs-gray.png)）
+  - 结论：运行时批量实体 + 自定义 shader 在 6.6 下不稳定；默认仍用 GameObject 渲染，
+    ECS 地形路径保留为 `AI003_TERRAIN_ECS=1` 的实验开关。骨骼角色仍需 DOTS skinning
 - 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 - 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 
-限制：地形与角色物理未 ECS 化；Entities Graphics 迁移受 shader 兼容性阻塞（见上）。
+限制：地形/角色物理未 ECS 化；Entities Graphics 运行时批量实体渲染不稳定，默认走 GameObject 路径（见上）。
 
 ## 已实现的技术点
 
@@ -260,6 +260,25 @@ ai003/
 
 ```powershell
 .\scripts\generate-world.cmd      # 重新生成，并复制到 Unity StreamingAssets 与 UE WorldData
+.\scripts\build-world.cmd -Size 4096   # 4 km 世界（8192 同理），生成后两端直接可用
+```
+
+### 世界规模与流式加载
+
+- 世界尺寸完全由数据决定：改 `world.json` 的 `sizeMeters` / `resolution` 即可，
+  客户端不写死；`scripts/build-world.cmd -Size 4096`（或 8192）会重新生成并同步到两端
+- Unity 地形按 **128 m chunk** 流式加载（`TerrainStreaming`）：
+  - 视野 2000 m，LOD0（全分辨率，≤700 m）、LOD1（strided 2，≤1400 m）、LOD2（strided 4）
+  - 只有 LOD0 chunk 挂 `MeshCollider`；离开视野的 chunk 直接 `SetActive(false)`
+  - 统计通过 `WorldStats.Describe()`（chunks/verts/colliders/refresh/build）输出，PlayMode 有断言
+- 实测：4 km 世界（1025² 顶点、32²=1024 chunks）在 400 m 测试视野下只构建 **33/1024** 个 chunk、
+  8.3k 顶点、3 个 collider；默认 2 km 世界在 2000 m 视野下 256/256、149k 顶点
+- 服务端 `GET /world` 返回世界元数据与进程指标（`sizeMeters`、`resolution`、`chunkerMeters`、
+  `chunksPerAxis`、数组文件大小、uptime/内存/goroutine），即使客户端不启动也能核对世界规模
+
+```powershell
+.\scripts\build-world.cmd -Size 4096
+curl http://127.0.0.1:8080/world
 ```
 
 UE 的地形/水面/角色材质由 Python 在编辑器里生成一次（`/Game/AI003`）：
@@ -337,7 +356,7 @@ cd server; go run ./cmd/pingclient -n 3  # 期望 SMOKE OK
 按 Play 也能直接进世界。`ConnectionBootstrap` 同时自动挂载并连接网关，Console 里可见：
 
 ```
-[AI003] world ready: 2048 m, 513x513 vertices, 64 chunks, spawn (168, 40, -8)
+[AI003] world ready: 2048 m, 513x513 vertices, 256 chunks, spawn (168, 40, -8)
 [AI003] connected to ws://127.0.0.1:8080/ws
 [AI003] pong seq=1 rtt=1ms
 ```
@@ -396,7 +415,8 @@ ue5-world  PASS
 | `scripts/demo-status.ps1` | 读 `/healthz` + `/demo`，打印房间/流量/事件指标（`-Json` 机器可读） |
 | `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
 | `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧、合成对比图与差分热力图，可设阈值 |
-| `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成；默认断言 fighters=2、tick 前进、attack>0、截图非空 |
+| `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成；默认断言 fighters=2、tick 前进、attack>0、hit>0、截图非空 |
+| `scripts/build-world.ps1` | 重新生成指定尺寸世界（2/4/8 km）并同步到 Unity StreamingAssets 与 UE WorldData |
 | `scripts/check-ue-input.ps1` | 用 `-AI003InputProbe` 自动验证 UE 相机相对输入映射（8 方向查表） |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示 |
 
@@ -421,7 +441,9 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | --- | --- | --- |
 | 离线冻结 | 离线玩家不可攻击，但**复活/冷却计时继续推进**；宽限 30 s 后移除 | 已满足演示需求 |
 | 世界同步身份 | 大世界的 `join` 仍以会话 id 记玩家，重连会新建 | 世界玩家也改用 `clientId` 持久身份 |
-| 双端画面统一 | 机位/角色/天空/曝光已对齐；平均像素差 7.2/255，色调仍有细微差 | 统一色彩分级/LUT，继续压低差值 || 指标回归 | `/demo` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
+| 双端画面统一 | 对齐太阳方位/天空/雾后：亮度差 **1.8**、平均像素差 **6.6/255**、**98.7%** 像素在 24 内；目标 ≤5 未达到，残差主要是 UE Lumen/材质响应 | 统一色彩分级/LUT 或改用匹配的简化光照 |
+| 指标回归 | `/demo`、`/world` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
+| UE 地形流式 | Unity 已按 128 m chunk 流式+LOD；UE 仍整块构建 | UE 分块/World Partition 化 |
 | 预测范围 | 只预测位置/朝向；血量、冷却、命中仍等服务器帧 | 命中/受击也做预测 + 视觉反馈 |
 | 预测与分离 | 预测已包含 20 mm 整数分离；推挤 bot 实测 15 s `corr=3`（阈值 <5） | 已满足演示需求 |
 | 竞技场表现 | 有围栏、前冲、伤害数字、倒地，但围栏无碰撞、非正式场景 | 独立竞技场场景与正式特效 |

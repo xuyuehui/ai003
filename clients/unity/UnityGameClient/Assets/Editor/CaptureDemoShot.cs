@@ -74,7 +74,7 @@ namespace AI003.EditorTools
             skybox.SetFloat("_AtmosphereThickness", 1f);
             skybox.SetColor("_SkyTint", new Color(0.5f, 0.6f, 0.7f));
             skybox.SetColor("_GroundColor", new Color(0.35f, 0.4f, 0.45f));
-            skybox.SetFloat("_Exposure", 1.7f);
+            skybox.SetFloat("_Exposure", 1.62f);
             RenderSettings.skybox = skybox;
 
             // ACES tonemapping in a global volume so both engines use a filmic

@@ -157,7 +157,7 @@ void AWorldGameMode::SpawnEnvironment()
 
 	// Sun.
 	ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
-		FVector::ZeroVector, FRotator(-46.f, 25.f, 0.f));
+		FVector::ZeroVector, FRotator(-46.f, 124.f, 0.f));
 	if (Sun != nullptr)
 	{
 		Sun->SetMobility(EComponentMobility::Movable);
@@ -190,8 +190,15 @@ void AWorldGameMode::SpawnEnvironment()
 		}
 	}
 
-	// Sky dome and sky light.
-	World->SpawnActor<ASkyAtmosphere>();
+	// Sky dome and sky light. The luminance factor lifts the sky dome only, so the
+	// sky can match Unity without over-brightening the terrain.
+	if (ASkyAtmosphere* Sky = World->SpawnActor<ASkyAtmosphere>())
+	{
+		if (USkyAtmosphereComponent* SkyComponent = Sky->GetComponent())
+		{
+			SkyComponent->SetSkyLuminanceFactor(FLinearColor(1.18f, 1.18f, 1.18f));
+		}
+	}
 
 	ASkyLight* SkyLight = World->SpawnActor<ASkyLight>();
 	if (SkyLight != nullptr)

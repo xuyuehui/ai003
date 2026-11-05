@@ -88,6 +88,9 @@ internal/worldgen/   地形/群系/颜色 + 测试
 
 ## 5. 世界生成
 
+- `GET /world`（http）：启动时用 `-world`（默认 `../world`）读取 `world.json`，返回
+  `sizeMeters`、`resolution`、`chunkMeters`、`chunksPerAxis`、数组文件字节数，以及
+  服务进程 uptime/内存/goroutine；没有世界数据时返回 503。用于核对世界规模与部署状态。
 - 完全确定性：同一 seed 逐字节一致。随机数用内置 `splitmix64`，**不用** `math/rand` 全局源。
 - 输出：`world.json`、`heightmap.f32`（float32 LE、行优先）、`colors.rgba8`（线性）、
   `biomes.r8`、`preview.png`。

@@ -72,6 +72,10 @@ type Server struct {
 	sessions map[string]sessionInfo // session id -> identity + room
 	metrics  *metricsState
 
+	world   *WorldInfo
+	worldMu sync.RWMutex
+	started time.Time
+
 	stop     chan struct{}
 	stopOnce sync.Once
 }
@@ -90,10 +94,25 @@ type roomSub struct {
 
 // New builds a Server that logs through logger (which may be nil).
 func New(logger *slog.Logger) *Server {
+	return NewWithWorld(logger, "")
+}
+
+// NewWithWorld is New plus optional world metadata (world.json directory).
+func NewWithWorld(logger *slog.Logger, worldDir string) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s := &Server{log: logger, mux: http.NewServeMux(), metrics: newMetrics()}
+	s := &Server{log: logger, mux: http.NewServeMux(), metrics: newMetrics(), started: time.Now()}
+	if worldDir != "" {
+		info, err := LoadWorldInfo(worldDir)
+		if err != nil {
+			logger.Warn("world metadata not loaded", "dir", worldDir, "error", err)
+		} else {
+			s.world = info
+			logger.Info("world loaded", "name", info.Name, "sizeMeters", info.SizeMeters,
+				"resolution", info.Resolution, "chunks", info.ChunksPerAxis*info.ChunksPerAxis)
+		}
+	}
 	s.up = websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
@@ -110,6 +129,7 @@ func New(logger *slog.Logger) *Server {
 	go s.roomLoop()
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /demo", s.handleDemo)
+	s.mux.HandleFunc("GET /world", s.handleWorld)
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	return s
 }
