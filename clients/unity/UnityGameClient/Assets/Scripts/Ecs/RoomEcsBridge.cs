@@ -94,6 +94,23 @@ namespace AI003.Ecs
             Em.AddComponentData(_local, new ServerSnapshot());
             Em.AddBuffer<PredictionStep>(_local);
             Em.AddBuffer<PredictionHistoryElement>(_local);
+            Em.AddBuffer<SeparationBody>(_local);
+        }
+
+        /// <summary>Stores the latest authoritative body positions for separation prediction.</summary>
+        public void SetSeparationBodies(System.Collections.Generic.IReadOnlyList<(int x, int z, bool alive)> bodies)
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return;
+            var buffer = Em.GetBuffer<SeparationBody>(_local);
+            buffer.Clear();
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                buffer.Add(new SeparationBody
+                {
+                    PositionMm = new int2(bodies[i].x, bodies[i].z),
+                    Alive = bodies[i].alive
+                });
+            }
         }
 
         public void SetLocal(Vector3 position, float yaw, float animSpeed, bool alive)
@@ -265,6 +282,27 @@ namespace AI003.Ecs
         {
             PredictionState prediction = LocalPrediction();
             return new Vector3(prediction.PositionMm.x / 1000f, 0f, prediction.PositionMm.y / 1000f);
+        }
+
+        public void GetLocalFacing(out int facingX, out int facingZ)
+        {
+            PredictionState prediction = LocalPrediction();
+            facingX = prediction.FacingX;
+            facingZ = prediction.FacingZ;
+        }
+
+        public int SeparationBodyCount()
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return -1;
+            return Em.GetBuffer<SeparationBody>(_local).Length;
+        }
+
+        public void DebugLocalState(out int tick, out float accumulator, out int2 position)
+        {
+            PredictionState prediction = LocalPrediction();
+            tick = prediction.Tick;
+            accumulator = prediction.Accumulator;
+            position = prediction.PositionMm;
         }
 
         private PredictionState LocalPrediction()

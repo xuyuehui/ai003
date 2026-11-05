@@ -97,5 +97,42 @@ namespace AI003.Tests
                 bench.Enabled = false;
             }
         }
+
+        [UnityTest]
+        public IEnumerator PredictionSeparatesFromOverlappingBody()
+        {
+            var target = new GameObject("[test] separation target");
+            var bridge = RoomEcsBridge.EnsureExists();
+            bridge.Clear();
+
+            try
+            {
+                bridge.EnsureLocal(target.transform, null, null);
+                bridge.ConfigureLocal(0, 0, 20000, 250, 177);
+                bridge.SetInput(0, 0, false);
+
+                bridge.SetSeparationBodies(new System.Collections.Generic.List<(int, int, bool)>
+                {
+                    (600, 0, true)
+                });
+
+                float started = Time.realtimeSinceStartup;
+                while (Time.realtimeSinceStartup - started < 1.2f)
+                {
+                    yield return null;
+                }
+
+                Vector3 position = bridge.GetLocalPositionMeters();
+                float distance = Vector3.Distance(new Vector3(0.6f, 0f, 0f), position);
+                bridge.DebugLocalState(out int sepTick, out float sepAcc, out Unity.Mathematics.int2 sepPos);
+                Debug.Log($"[AI003][ECS] separation: distance {distance:F3} m at {position} bodies={bridge.SeparationBodyCount()} tick={sepTick} acc={sepAcc:F3} mm={sepPos}");
+                Assert.GreaterOrEqual(distance, 0.75f, "prediction should keep bodies apart");
+            }
+            finally
+            {
+                bridge.Clear();
+                Object.Destroy(target);
+            }
+        }
     }
 }

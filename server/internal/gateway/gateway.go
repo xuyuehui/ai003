@@ -130,6 +130,7 @@ func (s *Server) roomLoop() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
+			s.rooms.CleanupEmpty(room.EmptyRoomGraceTicks)
 			for _, roomID := range s.rooms.RoomIDs() {
 				frame, ok := s.rooms.Step(roomID)
 				if !ok || len(frame.Players) == 0 {
@@ -352,6 +353,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				clientID = body.ClientID
+			}
+
+			// One persistent client id may only have one online fighter. A second
+			// session with the same id is rejected instead of silently taking over.
+			if existing, online := s.rooms.FindOnline(clientID); online {
+				s.roomMu.Lock()
+				info, sameSession := s.sessions[sessionID]
+				s.roomMu.Unlock()
+				if !sameSession || info.roomID != existing {
+					writeError(msg.Seq, msg.Type, "client already online")
+					continue
+				}
 			}
 
 			roomID, state, err := s.rooms.Enter(body.Room, clientID, body.Name)

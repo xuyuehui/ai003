@@ -33,6 +33,10 @@ public:
 	int32 GetRemoteCount() const { return Remotes.Num(); }
 	const FString& GetPlayerId() const { return PlayerId; }
 
+	/** Camera-relative WASD -> protocol direction, shared by input and the probe. */
+	static void MapCameraRelativeInput(float CameraYawDegrees, float InputX, float InputY,
+		int32& OutDX, int32& OutDZ);
+
 private:
 	void Connect();
 	void HandleConnected();

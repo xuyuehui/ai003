@@ -36,9 +36,11 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - ECS 系统必须是 unmanaged struct；托管对象（如 `MaterialPropertyBlock`）放 static 字段。
 - 桥接：`RoomEcsBridge` 把房间/世界快照转换为实体；网络层不直接写 Transform。
 - 预测：`PredictionState`（整数毫米位置/朝向/tick/累加器/边界与速度）、`PredictionInput`、
-  `ServerSnapshot`、`PredictionStep` 缓冲、`PredictionHistoryElement` 缓冲；
-  `LocalPredictionJob`（Burst `IJobEntity`）20 Hz 步进、领先 3 tick、误差 >50 mm 时回滚重放，
-  网络层只收发 tick。
+  `ServerSnapshot`、`PredictionStep` 缓冲、`PredictionHistoryElement` 缓冲、`SeparationBody` 缓冲；
+  `LocalPredictionJob`（Burst `IJobEntity`）20 Hz 步进、按服务器规则做 20 mm 分离、
+  领先 3 tick、误差 >50 mm 时回滚重放，网络层只收发 tick。
+- 命中反馈：攻击按下当帧用最新快照做范围/锥角判定，本地立刻触发前冲与受击闪红，
+  伤害/死亡仍以服务器事件为准（延迟 <1 帧）。
 - 批处理：`FighterStateUpdateJob`（`[BurstCompile] IJobEntity`）计时/插值/倒地，
   `FighterViewSystem`（`UpdateAfter`）只做 Transform/Animator/受击颜色。
 - Entities Graphics 实测：静态网格可渲染；自定义地形 shader 加 DOTS pragma 后仍洋红，

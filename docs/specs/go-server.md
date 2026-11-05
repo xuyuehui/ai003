@@ -63,17 +63,19 @@ internal/worldgen/   地形/群系/颜色 + 测试
 - 所有数值是整数毫米与 `int8` 输入，**禁止浮点**，保证 Go/C#/C++ 三端逐 tick 一致；
   伤害/冷却/复活/锥角判定/角色分离都写成整数表达式。
 - `Manager`：单房容量 `DefaultCapacity=8`；`Enter` 不指定房间时选人数最少且有位的房间，
-  都满则新建 `arena-N`；指定房间满员返回 `ErrRoomFull`。房间不自动销毁（原型期复用）。
-- `gateway` 起一个 20 Hz 循环遍历 `Manager.RoomIDs()`，逐房 `Step` 并只向该房订阅者广播
-  `room.frame`；`room.enter`/`room.input`/`room.leave`/`room.list` 在连接读循环里处理，
-  会话到 `{clientID, roomID}` 的映射存在 `sessions`。
+  都满则新建 `arena-N`；指定房间满员返回 `ErrRoomFull`。
+- 空房间回收：`Step` 记录 `emptyTicks`，网关每 tick 调 `CleanupEmpty(EmptyRoomGraceTicks=600)`，
+  空置 30 s 的房间会被删除（`/demo` 不再累积历史房间）。
 - 身份：`join`/`room.enter` 可带 `clientId`（≤64 字符），缺省退回会话 id；房间按它记玩家。
+  同一 `clientId` 已有**在线**角色时，第二个会话再 `room.enter` 会被拒绝
+  （`client already online`），避免静默顶号；离线宽限内的同 id 仍可重连。
 - 断线：defer 里对房间调用 `MarkOffline`（保留 600 ticks = 30 s），显式 `room.leave` 才
   `Leave` 立即移除；宽限内同 `clientId` 再次 `room.enter` 会复活原角色（不重置血量/位置/槽位），
   `Manager.Enter` 会先按玩家找回原房间并绕过容量检查。
+- 离线期间**复活与冷却计时继续推进**（但不能移动/攻击），重连后拿到的是已推进的状态。
 - `room.entered` 下发全部模拟常量（tickRate、场地半宽、速度、攻击范围/伤害/冷却、
   最大 HP、复活时间、攻击按键位），客户端不得写死。
-- 掉线即 `MarkOffline`；空房保留但循环不广播。
+- 掉线即 `MarkOffline`；空房保留 30 s 后由 `CleanupEmpty` 删除。
 - `room.input` 的 `tick` 是该输入生效的模拟 tick：非零且大于当前 tick 时排入
   `Player.Pending`，`Step` 时按 tick 取出并更新 `LastInput`；缺 tick / 过期 tick 直接
   作为 `LastInput` 立即生效（丢包与旧客户端兼容）。每 tick 会清掉过期排队项，避免堆积。

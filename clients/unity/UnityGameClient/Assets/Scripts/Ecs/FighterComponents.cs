@@ -92,4 +92,11 @@ namespace AI003.Ecs
         public int Tick;
         public int2 PositionMm;
     }
+
+    /// <summary>Latest authoritative body positions used to predict separation.</summary>
+    public struct SeparationBody : IBufferElementData
+    {
+        public int2 PositionMm;
+        public bool Alive;
+    }
 }

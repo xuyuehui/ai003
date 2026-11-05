@@ -49,6 +49,7 @@ namespace AI003.Net
         private Animator _localAnimator;
         private RoomEcsBridge _bridge;
         private Camera _roomCamera;
+        private readonly List<(int x, int z, bool alive)> _separationBodies = new List<(int, int, bool)>();
         private WorldData _world;
 
         private int _cursor;
@@ -56,6 +57,10 @@ namespace AI003.Net
         private int _tickRate = 20;
         private float _sendInterval = 0.05f;
         private float _arenaHalfMeters = 20f;
+        private int _attackRangeMm = 3000;
+        private bool _prevAttack;
+        private readonly Dictionary<string, Vector3> _remotePositions = new Dictionary<string, Vector3>();
+        private readonly Dictionary<string, bool> _remoteAlive = new Dictionary<string, bool>();
         private float _nextSend;
         private float _nextEnter;
         private bool _enabled;
@@ -219,9 +224,44 @@ namespace AI003.Net
             RoomCommand command = ReadCommand();
             _bridge.SetInput(command.DX, command.DZ, command.Attack);
 
+            // Local hit feedback: swing and spark immediately, the server confirms
+            // damage/corrections on the next frames.
+            if (command.Attack && !_prevAttack)
+            {
+                _bridge.TriggerAttack(_playerId);
+                TryLocalHit();
+            }
+            _prevAttack = command.Attack;
+
             while (_bridge.TryTakeStep(out int stepTick, out int dx, out int dz, out bool attack))
             {
                 SendTickInput(stepTick, new RoomCommand { DX = dx, DZ = dz, Attack = attack });
+            }
+        }
+
+        /// <summary>Range/cone check against the latest snapshot, purely for feedback.</summary>
+        private void TryLocalHit()
+        {
+            _bridge.GetLocalFacing(out int facingX, out int facingZ);
+            if (facingX == 0 && facingZ == 0) facingZ = 1;
+
+            Vector3 self = _bridge.GetLocalPositionMeters();
+            float range = _attackRangeMm / 1000f;
+
+            foreach (var pair in _remotePositions)
+            {
+                if (_remoteAlive.TryGetValue(pair.Key, out bool alive) && !alive) continue;
+
+                Vector3 delta = pair.Value - self;
+                delta.y = 0f;
+                float distance = delta.magnitude;
+                if (distance > range || distance < 0.0001f) continue;
+
+                // cos(60°) cone: dot(direction, facing) >= 0.5 * |direction| (facing is unit).
+                float dot = delta.x * facingX + delta.z * facingZ;
+                if (dot < 0.5f * distance) continue;
+
+                _bridge.TriggerHit(pair.Key);
             }
         }
 
@@ -232,6 +272,15 @@ namespace AI003.Net
                 ["name"] = ClientName,
                 ["clientId"] = ClientIdentity.Id
             };
+
+            // Optional explicit room (demo scripts use a fresh room per run so
+            // offline ghosts from earlier runs cannot satisfy the ready checks).
+            string roomName = System.Environment.GetEnvironmentVariable("AI003_ROOM_NAME");
+            if (!string.IsNullOrEmpty(roomName))
+            {
+                body["room"] = roomName;
+            }
+
             _connection.Send(new Envelope { Type = "room.enter", Seq = _connection.NextSeq(), Body = body });
         }
 
@@ -279,6 +328,7 @@ namespace AI003.Net
             _tickRate = body["tickRate"]?.Value<int>() ?? 20;
             _sendInterval = 1f / Mathf.Max(1, _tickRate);
             _arenaHalfMeters = (body["arenaHalfMM"]?.Value<float>() ?? 20000f) / 1000f;
+            _attackRangeMm = body["attackRangeMM"]?.Value<int>() ?? 3000;
             MaxHP = body["maxHP"]?.Value<int>() ?? 100;
             var state = body["state"] as JObject;
             HP = state?["hp"]?.Value<int>() ?? MaxHP;
@@ -340,6 +390,7 @@ namespace AI003.Net
             if (players == null) return;
 
             Players = players.Count;
+            _separationBodies.Clear();
             var seen = new HashSet<string>();
             foreach (var token in players)
             {
@@ -366,9 +417,16 @@ namespace AI003.Net
                 }
                 else
                 {
+                    _remotePositions[id] = position;
+                    _remoteAlive[id] = alive;
+                    _separationBodies.Add((
+                        Mathf.RoundToInt(position.x * 1000f),
+                        Mathf.RoundToInt(position.z * 1000f),
+                        alive));
                     UpdateRemote(id, position, yaw, alive);
                 }
             }
+            _bridge.SetSeparationBodies(_separationBodies);
 
             RemoveMissing(seen);
 
@@ -473,6 +531,8 @@ namespace AI003.Net
                 _bridge.RemoveRemote(id);
                 _remotes.Remove(id);
                 _lastPositions.Remove(id);
+                _remotePositions.Remove(id);
+                _remoteAlive.Remove(id);
             }
         }
 
@@ -629,6 +689,9 @@ namespace AI003.Net
             }
             _remotes.Clear();
             _lastPositions.Clear();
+            _remotePositions.Clear();
+            _remoteAlive.Clear();
+            _prevAttack = false;
             _popups.Clear();
             DestroyArena();
             _bridge.Clear();

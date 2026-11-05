@@ -132,6 +132,54 @@ func (m *Manager) Step(roomID string) (Frame, bool) {
 	return r.Step(), true
 }
 
+// FindOnline returns the room holding an online player with that id.
+func (m *Manager) FindOnline(playerID string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	roomID, ok := m.findPlayerLocked(playerID)
+	if !ok {
+		return "", false
+	}
+	room := m.rooms[roomID]
+	if room == nil || !room.HasOnline(playerID) {
+		return "", false
+	}
+	return roomID, true
+}
+
+// CleanupEmpty removes rooms that have had no players for at least graceTicks.
+func (m *Manager) CleanupEmpty(graceTicks int) int {
+	if graceTicks <= 0 {
+		return 0
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	removed := 0
+	for _, id := range append([]string(nil), m.order...) {
+		room := m.rooms[id]
+		if room == nil || room.EmptyFor() < graceTicks {
+			continue
+		}
+		delete(m.rooms, id)
+		removed++
+	}
+	if removed == 0 {
+		return 0
+	}
+
+	kept := m.order[:0]
+	for _, id := range m.order {
+		if _, ok := m.rooms[id]; ok {
+			kept = append(kept, id)
+		}
+	}
+	m.order = kept
+	return removed
+}
+
 // RoomIDs returns a stable copy of the room ids.
 func (m *Manager) RoomIDs() []string {
 	m.mu.Lock()

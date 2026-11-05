@@ -455,6 +455,13 @@ void UNetSyncSubsystem::SendRoomEnter()
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("name"), TEXT("UE5Player"));
 	Body->SetStringField(TEXT("clientId"), ClientID);
+
+	FString RoomName;
+	if (FParse::Value(FCommandLine::Get(), TEXT("AI003RoomName="), RoomName) && !RoomName.IsEmpty())
+	{
+		Body->SetStringField(TEXT("room"), RoomName);
+	}
+
 	Send(TEXT("room.enter"), Body);
 }
 
@@ -490,7 +497,7 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 			}
 		}
 
-		if (NearestDist > 2500.f)
+		if (NearestDist > 180.f)
 		{
 			const float DeltaX = NearestPos.X - PredictedPos.X;
 			const float DeltaY = NearestPos.Y - PredictedPos.Y;
@@ -498,7 +505,8 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 			// Protocol z = -UE Y.
 			Command.DZ = DeltaY > 0.f ? -1 : (DeltaY < 0.f ? 1 : 0);
 		}
-		Command.bAttack = (PredictedTick % 30) < 6 && NearestDist <= 3000.f;
+		// Attack whenever in range; the server cooldown gates the swing.
+		Command.bAttack = NearestDist <= 300.f;
 		return Command;
 	}
 
@@ -515,32 +523,43 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 
 			if (!FMath::IsNearlyZero(InputX) || !FMath::IsNearlyZero(InputY))
 			{
-				// Camera-relative input, matching the Unity client: W always moves
-				// where the camera looks. Snapped to the eight protocol directions.
 				const FRotator CameraRotation = PC->PlayerCameraManager != nullptr
 					? PC->PlayerCameraManager->GetCameraRotation()
 					: PC->GetControlRotation();
-				const float YawRadians = FMath::DegreesToRadians(CameraRotation.Yaw);
-				const FVector2D Forward(FMath::Cos(YawRadians), FMath::Sin(YawRadians));
-				const FVector2D Right(-FMath::Sin(YawRadians), FMath::Cos(YawRadians));
-				const FVector2D Wish = Forward * InputY + Right * InputX;
-
-				if (!Wish.IsNearlyZero())
-				{
-					constexpr float SnapStep = PI / 4.f;
-					const float Angle = FMath::Atan2(Wish.Y, Wish.X);
-					const int32 Index = FMath::RoundToInt(Angle / SnapStep);
-					const float UnitX = FMath::Cos(Index * SnapStep);
-					const float UnitY = FMath::Sin(Index * SnapStep);
-					Command.DX = FMath::RoundToInt(FMath::Sign(UnitX));
-					// Protocol z = -UE Y.
-					Command.DZ = -FMath::RoundToInt(FMath::Sign(UnitY));
-				}
+				MapCameraRelativeInput(CameraRotation.Yaw, InputX, InputY, Command.DX, Command.DZ);
 			}
 			Command.bAttack = PC->IsInputKeyDown(EKeys::SpaceBar);
 		}
 	}
 	return Command;
+}
+
+void UNetSyncSubsystem::MapCameraRelativeInput(float CameraYawDegrees, float InputX, float InputY,
+	int32& OutDX, int32& OutDZ)
+{
+	OutDX = 0;
+	OutDZ = 0;
+
+	// Camera-relative input, matching the Unity client: W always moves where the
+	// camera looks. Snapped to the eight protocol directions.
+	const float YawRadians = FMath::DegreesToRadians(CameraYawDegrees);
+	const FVector2D Forward(FMath::Cos(YawRadians), FMath::Sin(YawRadians));
+	const FVector2D Right(-FMath::Sin(YawRadians), FMath::Cos(YawRadians));
+	const FVector2D Wish = Forward * InputY + Right * InputX;
+	if (Wish.IsNearlyZero()) return;
+
+	constexpr float SnapStep = PI / 4.f;
+	const float Angle = FMath::Atan2(Wish.Y, Wish.X);
+	int32 Index = FMath::RoundToInt(Angle / SnapStep);
+	Index = ((Index % 8) + 8) % 8;
+
+	// Lookup keeps the cardinal axes exact; sign(cos(90°)) would be -1 due to
+	// floating point noise.
+	static const int32 DirectionX[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+	static const int32 DirectionY[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+	OutDX = DirectionX[Index];
+	// Protocol z = -UE Y.
+	OutDZ = -DirectionY[Index];
 }
 
 void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)

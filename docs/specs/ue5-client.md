@@ -105,7 +105,8 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   min=max=0.8 EV，`AEM_Manual` 会黑帧），供 `scripts/demo-compare.cmd` 合成。
 - 房间截图：`-AI003RoomShot` 在进房 20 s 后由引擎自身截图到
   `artifacts/demo/room-ue5.png` 并退出（不依赖窗口焦点）；`scripts/demo-room.cmd` 使用。
-- Bot：`-AI003RoomBot` 走向最近的远端玩家，2.5 m 处停下并按节奏攻击（不再走进对方身体）。
+- Bot：`-AI003RoomBot` 走向最近的远端玩家，1.8 m 处停下并持续攻击（服务器冷却门控）；
+  距离阈值以**厘米**为单位（`FVector::Dist2D` 返回 cm）。
 - 光照：Sun 的 `ForwardShadingPriority=1`、Fill 为 0，消除 "multiple directional lights"
   的前向着色警告。
 - 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。

@@ -1,5 +1,7 @@
 #include "World/WorldGameMode.h"
 
+#include "Net/NetSyncSubsystem.h"
+
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
@@ -41,6 +43,7 @@ void AWorldGameMode::InitGame(const FString& MapName, const FString& Options, FS
 	bWorldShot = FParse::Param(FCommandLine::Get(), TEXT("AI003WorldShot"));
 	bDemoShot = FParse::Param(FCommandLine::Get(), TEXT("AI003DemoShot"));
 	bRoomShot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomShot"));
+	bInputProbe = FParse::Param(FCommandLine::Get(), TEXT("AI003InputProbe"));
 
 	if (bWorldShot)
 	{
@@ -83,6 +86,26 @@ void AWorldGameMode::StartPlay()
 {
 	SpawnEnvironment();
 	Super::StartPlay();
+
+	if (bInputProbe)
+	{
+		const float Yaws[] = {0.f, 90.f, 180.f, 270.f};
+		for (float Yaw : Yaws)
+		{
+			int32 Wx, Wz, Ax, Az, Dx, Dz, Sx, Sz;
+			UNetSyncSubsystem::MapCameraRelativeInput(Yaw, 0.f, 1.f, Wx, Wz);
+			UNetSyncSubsystem::MapCameraRelativeInput(Yaw, -1.f, 0.f, Ax, Az);
+			UNetSyncSubsystem::MapCameraRelativeInput(Yaw, 1.f, 0.f, Dx, Dz);
+			UNetSyncSubsystem::MapCameraRelativeInput(Yaw, 0.f, -1.f, Sx, Sz);
+			UE_LOG(LogTemp, Display,
+				TEXT("[AI003][INPUTPROBE] yaw=%.0f W=(%d,%d) A=(%d,%d) D=(%d,%d) S=(%d,%d)"),
+				Yaw, Wx, Wz, Ax, Az, Dx, Dz, Sx, Sz);
+		}
+
+		GetWorldTimerManager().SetTimer(AutomationTimer,
+			FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 0.5f, false);
+		return;
+	}
 
 	if (bWorldSmoke || bWorldShot)
 	{

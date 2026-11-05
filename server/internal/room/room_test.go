@@ -288,3 +288,55 @@ func playerByID(frame Frame, id string) State {
 	}
 	return State{}
 }
+
+func TestOfflineRespawnProgress(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("p1", "A")
+	r.MarkOffline("p1")
+
+	r.mu.Lock()
+	player := r.players["p1"]
+	player.Respawn = 3
+	player.HP = 0
+	r.mu.Unlock()
+
+	for i := 0; i < 3; i++ {
+		r.Step()
+	}
+
+	r.mu.Lock()
+	respawn := player.Respawn
+	hp := player.HP
+	offline := player.Offline
+	r.mu.Unlock()
+
+	if respawn != 0 || hp != MaxHP {
+		t.Fatalf("offline respawn not applied: respawn=%d hp=%d", respawn, hp)
+	}
+	if !offline {
+		t.Fatal("player should still be offline inside the grace window")
+	}
+}
+
+func TestOfflineCooldownProgress(t *testing.T) {
+	r := New(DefaultCapacity)
+	r.Enter("p1", "A")
+	r.MarkOffline("p1")
+
+	r.mu.Lock()
+	player := r.players["p1"]
+	player.Cooldown = 5
+	r.mu.Unlock()
+
+	for i := 0; i < 3; i++ {
+		r.Step()
+	}
+
+	r.mu.Lock()
+	cooldown := player.Cooldown
+	r.mu.Unlock()
+
+	if cooldown != 2 {
+		t.Fatalf("offline cooldown = %d, want 2", cooldown)
+	}
+}

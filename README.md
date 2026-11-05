@@ -395,7 +395,8 @@ ue5-world  PASS
 | `scripts/demo-status.ps1` | 读 `/healthz` + `/demo`，打印房间/流量/事件指标（`-Json` 机器可读） |
 | `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
 | `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧、合成对比图与差分热力图，可设阈值 |
-| `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成 |
+| `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成；默认断言 fighters=2、tick 前进、attack>0、截图非空 |
+| `scripts/check-ue-input.ps1` | 用 `-AI003InputProbe` 自动验证 UE 相机相对输入映射（8 方向查表） |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
@@ -417,7 +418,7 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
-| 离线冻结 | 离线玩家不可攻击、复活计时暂停，重连后继续 | 离线期间仍推进复活/冷却，或直接判负 |
+| 离线冻结 | 离线玩家不可攻击，但**复活/冷却计时继续推进**；宽限 30 s 后移除 | 已满足演示需求 |
 | 世界同步身份 | 大世界的 `join` 仍以会话 id 记玩家，重连会新建 | 世界玩家也改用 `clientId` 持久身份 |
 | 双端画面统一 | 机位/角色/天空/曝光已对齐；平均像素差 7.2/255，色调仍有细微差 | 统一色彩分级/LUT，继续压低差值 || 指标回归 | `/demo` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
 | 预测范围 | 只预测位置/朝向；血量、冷却、命中仍等服务器帧 | 命中/受击也做预测 + 视觉反馈 |

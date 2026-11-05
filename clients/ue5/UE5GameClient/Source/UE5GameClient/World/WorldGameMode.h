@@ -51,6 +51,7 @@ private:
 	bool bWorldShot = false;
 	bool bDemoShot = false;
 	bool bRoomShot = false;
+	bool bInputProbe = false;
 	FString ShotPath;
 	FString DemoShotPath;
 	FString RoomShotPath;

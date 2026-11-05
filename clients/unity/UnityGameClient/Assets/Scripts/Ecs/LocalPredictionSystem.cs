@@ -25,7 +25,8 @@ namespace AI003.Ecs
             ref ServerSnapshot snapshot,
             ref FighterState fighter,
             DynamicBuffer<PredictionStep> steps,
-            DynamicBuffer<PredictionHistoryElement> history)
+            DynamicBuffer<PredictionHistoryElement> history,
+            DynamicBuffer<SeparationBody> bodies)
         {
             if (snapshot.Pending)
             {
@@ -44,6 +45,7 @@ namespace AI003.Ecs
                 prediction.Accumulator -= StepSeconds;
                 prediction.Tick++;
                 Step(ref prediction, input.DX, input.DZ);
+                Separate(ref prediction, bodies);
                 steps.Add(new PredictionStep
                 {
                     Tick = prediction.Tick,
@@ -114,6 +116,39 @@ namespace AI003.Ecs
             state.PositionMm = next;
             state.FacingX = dx;
             state.FacingZ = dz;
+        }
+
+        /// <summary>
+        /// Mirrors the server's invariant separation: push the local fighter away
+        /// from every overlapping body by 20 mm along the dominant axis.
+        /// </summary>
+        private static void Separate(ref PredictionState state, DynamicBuffer<SeparationBody> bodies)
+        {
+            const int MinDistMm = 2 * 400;
+            const int StepMm = 20;
+
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                if (!bodies[i].Alive) continue;
+
+                int2 delta = state.PositionMm - bodies[i].PositionMm;
+                int distSq = delta.x * delta.x + delta.y * delta.y;
+                if (distSq >= MinDistMm * MinDistMm) continue;
+                if (delta.x == 0 && delta.y == 0) delta.x = 1;
+
+                if (math.abs(delta.x) >= math.abs(delta.y))
+                {
+                    state.PositionMm.x += delta.x > 0 ? StepMm : -StepMm;
+                    state.PositionMm.x = math.clamp(state.PositionMm.x - state.CenterMm.x,
+                        -state.HalfExtentMm, state.HalfExtentMm) + state.CenterMm.x;
+                }
+                else
+                {
+                    state.PositionMm.y += delta.y > 0 ? StepMm : -StepMm;
+                    state.PositionMm.y = math.clamp(state.PositionMm.y - state.CenterMm.y,
+                        -state.HalfExtentMm, state.HalfExtentMm) + state.CenterMm.y;
+                }
+            }
         }
 
         private static void Prune(DynamicBuffer<PredictionStep> steps,

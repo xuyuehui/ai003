@@ -339,3 +339,47 @@ func waitRoomFrame(t *testing.T, conn messageReader, timeout time.Duration, pred
 	t.Fatal("room frame condition not met")
 	return room.Frame{}
 }
+
+func TestDuplicateClientIDRejected(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	first := dial(t, httpServer.URL)
+	readWelcome(t, first)
+	enterRoomAs(t, first, 10, "dup-client")
+
+	second := dial(t, httpServer.URL)
+	readWelcome(t, second)
+	enter, err := NewMessage("room.enter", 20, map[string]string{
+		"name": "impostor", "clientId": "dup-client",
+	})
+	if err != nil {
+		t.Fatalf("build room.enter: %v", err)
+	}
+	if err := second.WriteJSON(enter); err != nil {
+		t.Fatalf("write room.enter: %v", err)
+	}
+
+	_ = second.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		var msg Message
+		if err := second.ReadJSON(&msg); err != nil {
+			t.Fatalf("read error message: %v", err)
+		}
+		if msg.Type != "error" {
+			continue
+		}
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(msg.Body, &body); err != nil {
+			t.Fatalf("decode error body: %v", err)
+		}
+		if body.Message != "client already online" {
+			t.Fatalf("error = %q, want client already online", body.Message)
+		}
+		return
+	}
+}

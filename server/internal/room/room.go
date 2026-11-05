@@ -34,6 +34,8 @@ const (
 	RespawnTicks = 60
 	// DisconnectGraceTicks keeps an offline player's state for 30 s.
 	DisconnectGraceTicks = 30 * TickRate
+	// EmptyRoomGraceTicks is how long an empty room is kept before it is removed.
+	EmptyRoomGraceTicks = 30 * TickRate
 )
 
 // Input is one player's command for a tick.
@@ -117,11 +119,12 @@ const PlayerRadiusMM int64 = 400
 
 // Room holds the deterministic arena state.
 type Room struct {
-	mu       sync.Mutex
-	players  map[string]*Player
-	order    []string
-	tick     uint64
-	capacity int
+	mu         sync.Mutex
+	players    map[string]*Player
+	order      []string
+	tick       uint64
+	capacity   int
+	emptyTicks int
 }
 
 // New creates an empty room with the given capacity (<=0 uses the default).
@@ -130,6 +133,14 @@ func New(capacity int) *Room {
 		capacity = DefaultCapacity
 	}
 	return &Room{players: make(map[string]*Player), capacity: capacity}
+}
+
+// HasOnline reports whether the player exists and is not offline.
+func (r *Room) HasOnline(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.players[id]
+	return ok && !p.Offline
 }
 
 // Count returns the number of players currently in the room.
@@ -300,6 +311,17 @@ func (r *Room) Step() Frame {
 	for _, id := range r.order {
 		p := r.players[id]
 		if p.Offline {
+			// Grace timers keep running while offline: a connected player who is
+			// still dead will respawn, and attack cooldowns expire.
+			if p.Respawn > 0 {
+				p.Respawn--
+				if p.Respawn == 0 {
+					r.reset(p)
+				}
+			}
+			if p.Cooldown > 0 {
+				p.Cooldown--
+			}
 			p.OfflineTicks--
 			if p.OfflineTicks <= 0 {
 				r.removeLocked(id)
@@ -311,10 +333,22 @@ func (r *Room) Step() Frame {
 		r.stepPlayer(p, &frame.Events)
 	}
 	r.separate()
+	if len(r.players) == 0 {
+		r.emptyTicks++
+	} else {
+		r.emptyTicks = 0
+	}
 	for _, id := range r.order {
 		frame.Players = append(frame.Players, stateOf(r.players[id]))
 	}
 	return frame
+}
+
+// EmptyFor returns how many consecutive ticks the room has had no players.
+func (r *Room) EmptyFor() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.emptyTicks
 }
 
 // separate pushes overlapping fighters apart along the dominant axis. It is

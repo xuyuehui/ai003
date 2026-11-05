@@ -1,12 +1,14 @@
-﻿param(
+param(
     [string]$Unity = 'C:\Program Files\Unity 6000.6.6f1\Editor\Unity.exe',
     [string]$Engine = 'C:\Program Files\Epic Games\UE_5.8',
     [int]$Seconds = 5,
     [switch]$KeepRunning,
-    [switch]$NoPublish
+    [switch]$NoPublish,
+    [switch]$NoAssert
 )
 
 $ErrorActionPreference = 'Stop'
+$roomName = 'demo-' + (Get-Date -Format 'MMddHHmmss')
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
@@ -58,6 +60,8 @@ else {
     Write-Host '==> gateway already running' -ForegroundColor Cyan
 }
 
+$demoBefore = Get-Demo
+
 $unityProcess = $null
 $ueProcess = $null
 try {
@@ -66,7 +70,9 @@ try {
     Remove-Item $unityShot -Force -ErrorAction SilentlyContinue
     $unityProject = Join-Path $repo 'clients\unity\UnityGameClient'
     $previousRoom = $env:AI003_ROOM
+    $previousRoomName = $env:AI003_ROOM_NAME
     $env:AI003_ROOM = '1'
+    $env:AI003_ROOM_NAME = $roomName
     try {
         $unityProcess = Start-Process -FilePath $Unity -PassThru `
             -ArgumentList @('-projectPath', $unityProject,
@@ -77,12 +83,13 @@ try {
     }
     finally {
         $env:AI003_ROOM = $previousRoom
+        $env:AI003_ROOM_NAME = $previousRoomName
     }
 
     Start-Sleep -Seconds 5
 
     # --- UE ----------------------------------------------------------------
-    Write-Host '==> UE5: join the same room as a bot' -ForegroundColor Cyan
+    Write-Host "==> UE5: join $roomName as a bot" -ForegroundColor Cyan
     Remove-Item $ueShot -Force -ErrorAction SilentlyContinue
     $ueProject = Join-Path $repo 'clients\ue5\UE5GameClient\UE5GameClient.uproject'
     $ueEditor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
@@ -90,7 +97,8 @@ try {
         -RedirectStandardOutput (Join-Path $logs 'ue-room-shot.log') `
         -RedirectStandardError (Join-Path $logs 'ue-room-shot.err') `
         -ArgumentList @($ueProject, '-game', '-windowed', '-ResX=1280', '-ResY=720',
-            '-nosplash', '-AlwaysOnTop', '-AI003Room', '-AI003RoomBot', '-AI003RoomShot', '-log')
+            '-nosplash', '-AlwaysOnTop', '-AI003Room', '-AI003RoomBot', '-AI003RoomShot',
+            "-AI003RoomName=$roomName", '-log')
     Start-Sleep -Seconds 8
     [void](Focus-UE)
 
@@ -101,7 +109,7 @@ try {
     while ((Get-Date) -lt $deadline) {
         try {
             $demo = Get-Demo
-            $room = @($demo.rooms) | Where-Object { $_.players -ge 2 } | Select-Object -First 1
+            $room = @($demo.rooms) | Where-Object { $_.id -eq $roomName -and $_.players -ge 2 } | Select-Object -First 1
             if ($room) { $ready = $true; break }
         }
         catch { }
@@ -158,6 +166,53 @@ try {
     Write-Host ''
     Write-Host '--- server counters ---'
     & (Join-Path $PSScriptRoot 'demo-status.ps1') -BaseUrl $baseUrl
+
+    # --- assertions --------------------------------------------------------
+    $problems = @()
+    $roomAfter = @($demo.rooms) | Where-Object { $_.id -eq $room.id } | Select-Object -First 1
+    if (-not $roomAfter) {
+        $problems += "room $($room.id) disappeared"
+    }
+    else {
+        if ($roomAfter.players -lt 2) { $problems += "room players $($roomAfter.players) < 2" }
+        if ($roomAfter.tick -le $room.tick) { $problems += "room tick did not advance ($($room.tick) -> $($roomAfter.tick))" }
+    }
+
+    $frameDelta = [int64]$demo.stats.roomFrames - [int64]$demoBefore.stats.roomFrames
+    $attackDelta = [int64]$demo.stats.attackEvents - [int64]$demoBefore.stats.attackEvents
+    $hitDelta = [int64]$demo.stats.hitEvents - [int64]$demoBefore.stats.hitEvents
+    if ($frameDelta -le 0) { $problems += "no room frames observed" }
+    if ($attackDelta -le 0) { $problems += "no attack events observed" }
+    if ($hitDelta -le 0) { $problems += "no hit events observed" }
+
+    foreach ($shot in @($unityShot, $ueShot)) {
+        if (-not (Test-Path $shot)) { $problems += "missing screenshot $shot"; continue }
+        if ((Get-Item $shot).Length -lt 20000) { $problems += "screenshot too small: $shot" }
+    }
+
+    $playersNow = 0
+    $tickDelta = 0
+    if ($roomAfter) {
+        $playersNow = $roomAfter.players
+        $tickDelta = $roomAfter.tick - $room.tick
+    }
+
+    Write-Host ''
+    Write-Host ("checks: roomPlayers={0} tickDelta={1} frameDelta={2} attackDelta={3} hitDelta={4}" -f `
+        $playersNow, $tickDelta, $frameDelta, $attackDelta, $hitDelta)
+
+    if ($problems.Count -gt 0) {
+        if ($NoAssert) {
+            foreach ($problem in $problems) { Write-Host "WARN: $problem" -ForegroundColor Yellow }
+        }
+        else {
+            foreach ($problem in $problems) { Write-Host "FAIL: $problem" -ForegroundColor Red }
+            throw 'demo-room assertions failed'
+        }
+    }
+    elseif (-not $NoAssert) {
+        Write-Host 'room demo assertions passed' -ForegroundColor Green
+    }
 }
 finally {
     if (-not $KeepRunning) {

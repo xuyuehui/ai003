@@ -53,7 +53,8 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
 | 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 2.5、平均像素差 7.2/255、95.6% ≤24 |
-| 同房双端 | `scripts\demo-room.cmd` | 一条命令起网关 + 两端同房 + 双端截图 + 计数 |
+| 同房双端 | `scripts\demo-room.cmd` | 一条命令起网关 + 两端同房 + 双端截图 + 计数；默认断言 fighters=2/tick 前进/attack>0 |
+| 输入映射 | `scripts\check-ue-input.cmd` | UE 相机相对 WASD → 8 方向查表，`-AI003InputProbe` 自动校验 |
 | Unity ECS | PlayMode `FighterEcsTests` | 实体→Transform、整数预测、Burst 基准（4000 远端 job 0.118 ms vs 托管 3.569 ms） |
 | 对照回归 | `smoke-all -WithCompare` | 亮度差 ≤8、像素差 ≤24 的占比 ≥80% 才算通过 |
 | 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
