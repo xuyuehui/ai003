@@ -34,7 +34,7 @@ namespace AI003.Net
 
         public int PredictedTick => _bridge != null ? _bridge.LocalTick : 0;
         public int ServerTick => _bridge != null ? _bridge.ServerTick : 0;
-        public int Corrections => _corrections;
+        public int Corrections => _bridge != null ? _bridge.Corrections : 0;
         public float LastError => _lastError;
         public Vector3 PredictedPosition => _bridge != null ? _bridge.GetLocalPositionMeters() : Vector3.zero;
         public int LastCommandDX => _lastDX;
@@ -725,7 +725,7 @@ namespace AI003.Net
 
             string eventText = Time.unscaledTime < _lastEventUntil ? "   " + _lastEvent : "";
             GUI.Label(new Rect(16f, Screen.height - 68f, 760f, 24f),
-                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {PredictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
+                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {PredictedTick}  fighters {Players}  corr {Corrections}{eventText}", _style);
             GUI.Label(new Rect(16f, Screen.height - 44f, 760f, 24f),
                 $"WASD (camera relative)   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
 

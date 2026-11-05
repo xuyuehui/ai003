@@ -88,6 +88,7 @@ namespace AI003.Ecs
             prediction.PositionMm = snapshot.PositionMm;
             prediction.Tick = snapshot.Tick;
             prediction.Accumulator = 0f;
+            prediction.Corrections++;
 
             for (int i = 0; i < steps.Length; i++)
             {

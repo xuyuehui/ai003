@@ -291,6 +291,8 @@ namespace AI003.Ecs
             facingZ = prediction.FacingZ;
         }
 
+        public int Corrections => LocalPrediction().Corrections;
+
         public int SeparationBodyCount()
         {
             if (_local == Entity.Null || !Em.Exists(_local)) return -1;

@@ -58,6 +58,7 @@ namespace AI003.Ecs
         public int HalfExtentMm;
         public int SpeedMm;
         public int DiagonalMm;
+        public int Corrections;
     }
 
     /// <summary>Latest player command, written by the network bridge each frame.</summary>

@@ -43,6 +43,7 @@ void UNetSyncSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	FParse::Value(FCommandLine::Get(), TEXT("AI003Url="), Endpoint);
 	bRoomEnabled = FParse::Param(FCommandLine::Get(), TEXT("AI003Room"));
 	bRoomBot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomBot"));
+	bRoomPusher = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomPusher"));
 	ClientID = LoadOrCreateClientId();
 
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
@@ -497,7 +498,8 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 			}
 		}
 
-		if (NearestDist > 180.f)
+		// Pusher mode walks into the other fighter on purpose (separation test).
+		if (NearestDist > (bRoomPusher ? 0.f : 180.f))
 		{
 			const float DeltaX = NearestPos.X - PredictedPos.X;
 			const float DeltaY = NearestPos.Y - PredictedPos.Y;

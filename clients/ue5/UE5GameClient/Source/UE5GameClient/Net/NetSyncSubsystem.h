@@ -94,6 +94,7 @@ private:
 	bool bRoomEnabled = false;
 	bool bRoomActive = false;
 	bool bRoomBot = false;
+	bool bRoomPusher = false;
 	FString RoomId;
 	int32 RoomTick = 0;
 	int32 RoomHP = 100;

@@ -106,6 +106,7 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 房间截图：`-AI003RoomShot` 在进房 20 s 后由引擎自身截图到
   `artifacts/demo/room-ue5.png` 并退出（不依赖窗口焦点）；`scripts/demo-room.cmd` 使用。
 - Bot：`-AI003RoomBot` 走向最近的远端玩家，1.8 m 处停下并持续攻击（服务器冷却门控）；
+  `-AI003RoomPusher` 改为持续顶住目标，用于验证分离/预测校正；
   距离阈值以**厘米**为单位（`FVector::Dist2D` 返回 cm）。
 - 光照：Sun 的 `ForwardShadingPriority=1`、Fill 为 0，消除 "multiple directional lights"
   的前向着色警告。
