@@ -112,6 +112,17 @@ namespace AI003.EditorTools
             AssetDatabase.Refresh();
 
             // Force the subscene importer to bake (content scene is closed now).
+            // AssetDatabase.SetImporterOverrideInternal is internal but is the only
+            // way to select SubSceneImporter from batch mode.
+            var importerType = System.Type.GetType("Unity.Scenes.Editor.SubSceneImporter, Unity.Scenes.Editor");
+            var overrideMethod = typeof(AssetDatabase).GetMethod(
+                "SetImporterOverrideInternal",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Debug.Log($"[AI003][BAKE] override importer={importerType} method={overrideMethod != null}");
+            if (overrideMethod != null && importerType != null)
+            {
+                overrideMethod.Invoke(null, new object[] { ContentScene, importerType });
+            }
             AssetDatabase.ImportAsset(ContentScene, ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
 
