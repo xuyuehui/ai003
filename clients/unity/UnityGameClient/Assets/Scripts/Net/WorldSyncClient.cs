@@ -266,10 +266,7 @@ namespace AI003.Net
                 }
             }
 
-            GameObject instance = Instantiate(_remotePrefab, position, Quaternion.Euler(0f, yaw, 0f));
-            instance.name = "Remote_" + id;
-            var avatar = instance.AddComponent<RemoteAvatar>();
-            return avatar;
+            return RemoteAvatar.Create(_remotePrefab, position, yaw, "Remote_" + id);
         }
 
         private void ResetSession()

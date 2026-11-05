@@ -22,6 +22,20 @@ namespace AI003.World
         public OrbitCamera CameraRig { get; private set; }
         public bool IsReady => Data != null && Player != null;
 
+        private Transform _model;
+
+        /// <summary>Debug: F9 flips the visual model 180° to diagnose facing issues.</summary>
+        private void Update()
+        {
+            if (_model == null) return;
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
+            {
+                _model.localRotation = Quaternion.Euler(0f, _model.localEulerAngles.y + 180f, 0f);
+                Debug.Log($"[AI003] model yaw flipped to {_model.localEulerAngles.y:F0}");
+            }
+        }
+
         [SerializeField] private bool _autoBuild = true;
 
         private GUIStyle _hudStyle;
@@ -182,7 +196,15 @@ namespace AI003.World
             model.transform.localPosition = Vector3.zero;
             // The prefab already carries the avatar, material and 180-degree facing;
             // keep the visual scale in one place (3.96 m model -> 1.8 m character).
-            model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            float modelYaw = 180f;
+            string overrideYaw = Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
+            if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
+            {
+                modelYaw = parsed;
+            }
+            model.transform.localRotation = Quaternion.Euler(0f, modelYaw, 0f);
+            _model = model.transform;
+            Debug.Log($"[AI003] model yaw offset {modelYaw}");
             model.transform.localScale = Vector3.one * 0.45f;
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())

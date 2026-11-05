@@ -495,9 +495,7 @@ namespace AI003.Net
                 var prefab = Resources.Load<GameObject>("Characters/KenneyProtagonists/Player");
                 if (prefab == null) return;
 
-                var instance = Instantiate(prefab, position, Quaternion.Euler(0f, yaw, 0f));
-                instance.name = "Room_" + id;
-                avatar = instance.AddComponent<RemoteAvatar>();
+                avatar = RemoteAvatar.Create(prefab, position, yaw, "Room_" + id);
                 _remotes[id] = avatar;
             }
 
