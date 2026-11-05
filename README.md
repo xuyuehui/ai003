@@ -111,11 +111,11 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 - **批处理**：`FighterStateUpdateJob`（Burst `IJobEntity`）负责计时、远端插值与倒地，
   `FighterViewSystem` 只做表现。PlayMode 基准（4000 远端，10 次平均）：
   **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
-- **Entities Graphics（实测）**：已安装 `com.unity.entities.graphics@6.6.0`；静态网格 +
-  URP Lit 可正常渲染（[探针截图](docs/images/ecs-graphics-probe.png)），但自定义地形 shader
-  没有 DOTS instancing（渲染为洋红，[证据](docs/images/ecs-terrain-shader-fail.png)），
-  骨骼角色还需要 deformation shader。因此地形/角色暂时保留 GameObject 渲染，
-  迁移前提是把 shader 改成 DOTS 兼容版本（下一步工作）
+- **Entities Graphics（实测后移除）**：试装 `com.unity.entities.graphics@6.6.0` 并验证：
+  静态网格 + URP Lit 可正常渲染（[探针截图](docs/images/ecs-graphics-probe.png)），但自定义
+  地形 shader 没有 DOTS instancing（渲染为洋红，[证据](docs/images/ecs-terrain-shader-fail.png)），
+  骨骼角色还需要 deformation shader。结论：迁移前提是先把 shader 改成 DOTS 兼容版本；
+  为避免影响现有渲染，包已移除，地形/角色继续用 GameObject 渲染
 - 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 
 限制：地形与角色物理未 ECS 化；Entities Graphics 迁移受 shader 兼容性阻塞（见上）。

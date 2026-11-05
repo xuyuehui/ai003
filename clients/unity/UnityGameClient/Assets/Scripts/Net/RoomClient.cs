@@ -142,6 +142,12 @@ namespace AI003.Net
             _enabled = System.Environment.GetEnvironmentVariable("AI003_ROOM") == "1";
         }
 
+        private static ThirdPersonController FindPlayer()
+        {
+            var bootstrap = FindFirstObjectByType<WorldBootstrap>();
+            if (bootstrap != null && bootstrap.Player != null) return bootstrap.Player;
+            return FindFirstObjectByType<ThirdPersonController>();
+        }
         private void OnDestroy()
         {
             LeaveLocal();
@@ -185,6 +191,8 @@ namespace AI003.Net
 
             if (!InRoom)
             {
+                var bootstrap = FindFirstObjectByType<WorldBootstrap>();
+                if (bootstrap == null || !bootstrap.IsReady) return;
                 if (Time.unscaledTime >= _nextEnter)
                 {
                     _nextEnter = Time.unscaledTime + 1f;
@@ -195,10 +203,11 @@ namespace AI003.Net
 
             if (_local == null)
             {
-                _local = FindFirstObjectByType<ThirdPersonController>();
+                _local = FindPlayer();
                 if (_local == null) return;
                 _localAnimator = _local.GetComponentInChildren<Animator>();
-                _bridge.EnsureLocal(_local.transform, _localAnimator, _local.GetComponentInChildren<Renderer>());
+                // Do not create the prediction entity before the room is entered:
+                // the ECS would move the avatar to the default (0,0) prediction.
             }
 
             float now = Time.unscaledTime;
@@ -274,13 +283,14 @@ namespace AI003.Net
             HP = state?["hp"]?.Value<int>() ?? MaxHP;
             Dead = state != null && !(state["alive"]?.Value<bool>() ?? true);
 
-            _local = FindFirstObjectByType<ThirdPersonController>();
+            _local = FindPlayer();
             if (_local != null && !wasInRoom)
             {
                 _center = _local.transform.position;
                 _groundY = _center.y;
                 _local.enabled = false;
                 _localAnimator = _local.GetComponentInChildren<Animator>();
+                _bridge.Clear();
                 _bridge.EnsureLocal(_local.transform, _localAnimator, _local.GetComponentInChildren<Renderer>());
             }
 
@@ -349,8 +359,8 @@ namespace AI003.Net
                     HP = token["hp"]?.Value<int>() ?? HP;
                     Dead = !alive;
                     _bridge.SetServerSnapshot(
-                        Mathf.RoundToInt(xMeters * 1000f),
-                        Mathf.RoundToInt(zMeters * 1000f),
+                        Mathf.RoundToInt(position.x * 1000f),
+                        Mathf.RoundToInt(position.z * 1000f),
                         Tick);
                 }
                 else

@@ -69,8 +69,10 @@ namespace AI003.Ecs
             {
                 Alive = true,
                 LungeDuration = 0.18f,
-                Yaw = 180f,
-                TargetYaw = 180f
+                Position = transform.position,
+                TargetPosition = transform.position,
+                Yaw = transform.eulerAngles.y,
+                TargetYaw = transform.eulerAngles.y
             });
             Em.AddComponentData(_local, new FighterAnim { Speed = 0f, Grounded = true, PlayRate = 1f });
             Em.AddComponentData(_local, new FighterView
@@ -81,6 +83,9 @@ namespace AI003.Ecs
             });
             Em.AddComponentData(_local, new PredictionState
             {
+                PositionMm = new int2(
+                    (int)System.Math.Round(transform.position.x * 1000f),
+                    (int)System.Math.Round(transform.position.z * 1000f)),
                 SpeedMm = 250,
                 DiagonalMm = 177,
                 HalfExtentMm = 20000
