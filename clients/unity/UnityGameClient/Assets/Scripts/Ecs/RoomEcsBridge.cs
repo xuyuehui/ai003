@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Unity.Entities;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace AI003.Ecs
@@ -17,6 +18,9 @@ namespace AI003.Ecs
         private EntityManager _entityManager;
         private Entity _local = Entity.Null;
         private readonly Dictionary<string, Entity> _remotes = new Dictionary<string, Entity>();
+
+        public int LocalTick => LocalPrediction().Tick;
+        public int ServerTick => LocalSnapshot().Tick;
 
         public static RoomEcsBridge EnsureExists()
         {
@@ -75,11 +79,30 @@ namespace AI003.Ecs
                 Animator = animator,
                 Renderer = renderer
             });
+            Em.AddComponentData(_local, new PredictionState
+            {
+                SpeedMm = 250,
+                DiagonalMm = 177,
+                HalfExtentMm = 20000
+            });
+            Em.AddComponentData(_local, new PredictionInput());
+            Em.AddComponentData(_local, new ServerSnapshot());
+            Em.AddBuffer<PredictionStep>(_local);
+            Em.AddBuffer<PredictionHistoryElement>(_local);
         }
 
         public void SetLocal(Vector3 position, float yaw, float animSpeed, bool alive)
         {
             if (_local == Entity.Null || !Em.Exists(_local)) return;
+            var prediction = Em.GetComponentData<PredictionState>(_local);
+            prediction.PositionMm = new int2(
+                (int)System.Math.Round(position.x * 1000f),
+                (int)System.Math.Round(position.z * 1000f));
+            float radians = yaw * Mathf.Deg2Rad;
+            prediction.FacingX = Mathf.RoundToInt(Mathf.Sin(radians));
+            prediction.FacingZ = Mathf.RoundToInt(Mathf.Cos(radians));
+            Em.SetComponentData(_local, prediction);
+
             var state = Em.GetComponentData<FighterState>(_local);
             state.Position = position;
             state.TargetPosition = position;
@@ -175,6 +198,80 @@ namespace AI003.Ecs
             var state = Em.GetComponentData<FighterState>(entity);
             state.Alive = alive;
             Em.SetComponentData(entity, state);
+        }
+
+        /// <summary>Sets the arena bounds and per-tick speeds used by the prediction system.</summary>
+        public void ConfigureLocal(int centerXmm, int centerZmm, int halfExtentMm, int speedMm, int diagonalMm)
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return;
+            var prediction = Em.GetComponentData<PredictionState>(_local);
+            prediction.CenterMm = new int2(centerXmm, centerZmm);
+            prediction.HalfExtentMm = halfExtentMm;
+            prediction.SpeedMm = speedMm;
+            prediction.DiagonalMm = diagonalMm;
+            Em.SetComponentData(_local, prediction);
+        }
+
+        /// <summary>Feeds the current command; the system consumes it on the next 20 Hz step.</summary>
+        public void SetInput(int dx, int dz, bool attack)
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return;
+            Em.SetComponentData(_local, new PredictionInput { DX = dx, DZ = dz, Attack = attack });
+        }
+
+        /// <summary>Queues an authoritative snapshot for reconciliation.</summary>
+        public void SetServerSnapshot(int xMm, int zMm, int tick)
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return;
+            Em.SetComponentData(_local, new ServerSnapshot
+            {
+                PositionMm = new int2(xMm, zMm),
+                Tick = tick,
+                Pending = true
+            });
+        }
+
+        /// <summary>Pops the oldest unsent predicted tick for the network layer.</summary>
+        public bool TryTakeStep(out int tick, out int dx, out int dz, out bool attack)
+        {
+            tick = 0;
+            dx = 0;
+            dz = 0;
+            attack = false;
+            if (_local == Entity.Null || !Em.Exists(_local)) return false;
+
+            var steps = Em.GetBuffer<PredictionStep>(_local);
+            for (int i = 0; i < steps.Length; i++)
+            {
+                if (steps[i].Sent) continue;
+                PredictionStep step = steps[i];
+                step.Sent = true;
+                steps[i] = step;
+                tick = step.Tick;
+                dx = step.DX;
+                dz = step.DZ;
+                attack = step.Attack;
+                return true;
+            }
+            return false;
+        }
+
+        public Vector3 GetLocalPositionMeters()
+        {
+            PredictionState prediction = LocalPrediction();
+            return new Vector3(prediction.PositionMm.x / 1000f, 0f, prediction.PositionMm.y / 1000f);
+        }
+
+        private PredictionState LocalPrediction()
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return default;
+            return Em.GetComponentData<PredictionState>(_local);
+        }
+
+        private ServerSnapshot LocalSnapshot()
+        {
+            if (_local == Entity.Null || !Em.Exists(_local)) return default;
+            return Em.GetComponentData<ServerSnapshot>(_local);
         }
 
         public void Clear()

@@ -105,10 +105,20 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   - `RoomEcsBridge`：把网络层的房间/世界快照写成实体，是 MonoBehaviour 与 ECS 的边界
 - 网络（WebSocket/协议解析）、地形、角色控制器仍保留在 MonoBehaviour：
   ECS 负责"状态 + 表现"，I/O 与物理沿用 Unity 既有实现（混合架构，DOTS 常见做法）
-- 验证：PlayMode 测试 `FighterEcsTests.LocalEntityDrivesTransform` 断言实体位置会写回 Transform；
-  `demo-room` 双端截图确认本地/远端角色都由 ECS 驱动
+- **预测**：`PredictionState`/`PredictionInput`/`ServerSnapshot`/`PredictionStep`/
+  `PredictionHistoryElement` + `LocalPredictionSystem`，按 20 Hz 整数毫米步进、领先 3 tick、
+  记录历史并在收到权威快照时回滚重放；网络层只负责喂输入和发送 tick
+- **批处理**：`FighterStateUpdateJob`（Burst `IJobEntity`）负责计时、远端插值与倒地，
+  `FighterViewSystem` 只做表现。PlayMode 基准（4000 远端，10 次平均）：
+  **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
+- **Entities Graphics（实测）**：已安装 `com.unity.entities.graphics@6.6.0`；静态网格 +
+  URP Lit 可正常渲染（[探针截图](docs/images/ecs-graphics-probe.png)），但自定义地形 shader
+  没有 DOTS instancing（渲染为洋红，[证据](docs/images/ecs-terrain-shader-fail.png)），
+  骨骼角色还需要 deformation shader。因此地形/角色暂时保留 GameObject 渲染，
+  迁移前提是把 shader 改成 DOTS 兼容版本（下一步工作）
+- 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 
-限制：预测的整数步进仍在 `RoomClient`（网络层）里，尚未搬进 ECS/Burst；地形与角色物理也未 ECS 化。
+限制：地形与角色物理未 ECS 化；Entities Graphics 迁移受 shader 兼容性阻塞（见上）。
 
 ## 已实现的技术点
 

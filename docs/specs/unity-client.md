@@ -35,8 +35,15 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   前冲、受击闪红、倒地与 Transform/Animator 写回。
 - ECS 系统必须是 unmanaged struct；托管对象（如 `MaterialPropertyBlock`）放 static 字段。
 - 桥接：`RoomEcsBridge` 把房间/世界快照转换为实体；网络层不直接写 Transform。
-- 边界：网络 I/O、地形、角色物理仍为 MonoBehaviour；预测整数步进暂留 `RoomClient`。
-- 测试：`FighterEcsTests.LocalEntityDrivesTransform`（PlayMode）断言实体位置写回 Transform。
+- 预测：`PredictionState`（整数毫米位置/朝向/tick/累加器/边界与速度）、`PredictionInput`、
+  `ServerSnapshot`、`PredictionStep` 缓冲、`PredictionHistoryElement` 缓冲；
+  `LocalPredictionSystem` 20 Hz 步进、领先 3 tick、误差 >50 mm 时回滚重放，网络层只收发 tick。
+- 批处理：`FighterStateUpdateJob`（`[BurstCompile] IJobEntity`）计时/插值/倒地，
+  `FighterViewSystem`（`UpdateAfter`）只做 Transform/Animator/受击颜色。
+- Entities Graphics：已装 6.6.0；静态网格 + URP Lit 可渲染；自定义地形 shader 缺少
+  DOTS instancing（洋红），骨骼角色需 deformation shader，暂不迁移。
+- 基准：`FighterBenchmarkSystem`（PlayMode 测试创建）4000 远端 × 10 次：
+  job 0.118 ms vs 托管 3.569 ms。
 
 ## 3. 代码规范
 

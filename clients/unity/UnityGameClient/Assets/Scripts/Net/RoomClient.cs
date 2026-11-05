@@ -32,11 +32,11 @@ namespace AI003.Net
         public int Players { get; private set; }
         public bool Dead { get; private set; }
 
-        public int PredictedTick => _predictedTick;
-        public int ServerTick => _serverTick;
+        public int PredictedTick => _bridge != null ? _bridge.LocalTick : 0;
+        public int ServerTick => _bridge != null ? _bridge.ServerTick : 0;
         public int Corrections => _corrections;
         public float LastError => _lastError;
-        public Vector3 PredictedPosition => _predictedPos;
+        public Vector3 PredictedPosition => _bridge != null ? _bridge.GetLocalPositionMeters() : Vector3.zero;
         public int LastCommandDX => _lastDX;
         public int LastCommandDZ => _lastDZ;
 
@@ -78,10 +78,6 @@ namespace AI003.Net
 
         private readonly Dictionary<int, RoomCommand> _pending = new Dictionary<int, RoomCommand>();
         private readonly Dictionary<int, Vector3> _predicted = new Dictionary<int, Vector3>();
-        private Vector3 _predictedPos;
-        private Vector3 _lastAppliedPos;
-        private int _predictedTick;
-        private int _serverTick;
         private int _facingX;
         private int _facingZ;
         private float _speedPerTick = 0.25f;
@@ -98,7 +94,6 @@ namespace AI003.Net
         private int _lastDZ;
 
         private GameObject _arenaRoot;
-        private float _localAttackUntil;
         private float _localHitUntil;
         private bool _wasDead;
 
@@ -207,23 +202,17 @@ namespace AI003.Net
             }
 
             float now = Time.unscaledTime;
+            _ = now;
 
-            // Keep the local simulation a few ticks ahead of the server; if a
-            // frame was long (editor hitch) catch up instead of drifting behind.
-            const int predictionAhead = 3;
-            int desired = _serverTick + predictionAhead;
-            int guard = 0;
-            while (_predictedTick < desired && guard++ < 8)
-            {
-                PredictTick();
-            }
+            // The ECS predicts at 20 Hz in integer millimetres; this layer only
+            // feeds the current command and ships the ticks the system produced.
+            RoomCommand command = ReadCommand();
+            _bridge.SetInput(command.DX, command.DZ, command.Attack);
 
-            if (now >= _nextPredictAt)
+            while (_bridge.TryTakeStep(out int stepTick, out int dx, out int dz, out bool attack))
             {
-                _nextPredictAt = Mathf.Max(now + _sendInterval, _nextPredictAt + _sendInterval);
-                PredictTick();
+                SendTickInput(stepTick, new RoomCommand { DX = dx, DZ = dz, Attack = attack });
             }
-            ApplyLocalPrediction();
         }
 
         private void SendEnter()
@@ -298,22 +287,24 @@ namespace AI003.Net
             _speedPerTick = (body["speedMMPerTick"]?.Value<float>() ?? 250f) / 1000f;
             _diagPerTick = (body["diagonalMMPerTick"]?.Value<float>() ?? 177f) / 1000f;
 
-            if (!wasInRoom)
-            {
-                _predictedTick = body["tick"]?.Value<int>() ?? 0;
-                _nextPredictAt = Time.unscaledTime + _sendInterval;
-            }
-
             if (state != null)
             {
-                _predictedPos = ToWorld(
-                    (state["x"]?.Value<float>() ?? 0f) / 1000f,
-                    (state["z"]?.Value<float>() ?? 0f) / 1000f);
-                _facingX = state["facingX"]?.Value<int>() ?? 0;
-                _facingZ = state["facingZ"]?.Value<int>() ?? 1;
-                _lastAppliedPos = _predictedPos;
-                _pending.Clear();
-                _predicted.Clear();
+                float xMeters = (state["x"]?.Value<float>() ?? 0f) / 1000f;
+                float zMeters = (state["z"]?.Value<float>() ?? 0f) / 1000f;
+                Vector3 spawn = ToWorld(xMeters, zMeters);
+                _bridge.SetLocal(spawn, YawFromFacing(
+                    state["facingX"]?.Value<int>() ?? 0,
+                    state["facingZ"]?.Value<int>() ?? 1), 0f, true);
+                _bridge.ConfigureLocal(
+                    Mathf.RoundToInt(_center.x * 1000f),
+                    Mathf.RoundToInt(_center.z * 1000f),
+                    Mathf.RoundToInt(_arenaHalfMeters * 1000f),
+                    Mathf.RoundToInt(_speedPerTick * 1000f),
+                    Mathf.RoundToInt(_diagPerTick * 1000f));
+                _bridge.SetServerSnapshot(
+                    Mathf.RoundToInt(spawn.x * 1000f),
+                    Mathf.RoundToInt(spawn.z * 1000f),
+                    body["tick"]?.Value<int>() ?? 0);
             }
 
             if (!wasInRoom)
@@ -357,7 +348,10 @@ namespace AI003.Net
                 {
                     HP = token["hp"]?.Value<int>() ?? HP;
                     Dead = !alive;
-                    Reconcile(position, Tick);
+                    _bridge.SetServerSnapshot(
+                        Mathf.RoundToInt(xMeters * 1000f),
+                        Mathf.RoundToInt(zMeters * 1000f),
+                        Tick);
                 }
                 else
                 {
@@ -469,99 +463,6 @@ namespace AI003.Net
                 _remotes.Remove(id);
                 _lastPositions.Remove(id);
             }
-        }
-
-        private void PredictTick()
-        {
-            if (!InRoom || _local == null) return;
-
-            RoomCommand command = ReadCommand();
-            int tick = ++_predictedTick;
-            _pending[tick] = command;
-
-            StepPrediction(ref _predictedPos, ref _facingX, ref _facingZ, command);
-            _predicted[tick] = _predictedPos;
-
-            SendTickInput(tick, command);
-        }
-
-        /// <summary>Hands the predicted state to the ECS; FighterViewSystem applies it.</summary>
-        private void ApplyLocalPrediction()
-        {
-            if (_local == null) return;
-
-            float moved = Vector3.Distance(_predictedPos, _lastAppliedPos);
-            _lastAppliedPos = _predictedPos;
-
-            float yaw = YawFromFacing(_facingX, _facingZ);
-            _bridge.SetLocal(_predictedPos, yaw, moved > 0.01f ? 0.6f : 0f, !Dead);
-        }
-
-        /// <summary>Compares the authoritative frame with the prediction and replays if needed.</summary>
-        private void Reconcile(Vector3 serverPosition, int serverTick)
-        {
-            _serverTick = serverTick;
-
-            bool replay = false;
-            if (_predicted.TryGetValue(serverTick, out Vector3 predicted))
-            {
-                _lastError = Vector3.Distance(predicted, serverPosition);
-                if (_lastError > 0.05f)
-                {
-                    _predictedPos = serverPosition;
-                    _corrections++;
-                    replay = true;
-                }
-            }
-            else
-            {
-                // Joined mid-stream or lost a frame: snap to the server state.
-                _predictedPos = serverPosition;
-                replay = true;
-            }
-
-            if (replay)
-            {
-                for (int tick = serverTick + 1; tick <= _predictedTick; tick++)
-                {
-                    if (!_pending.TryGetValue(tick, out RoomCommand command)) break;
-                    StepPrediction(ref _predictedPos, ref _facingX, ref _facingZ, command);
-                    _predicted[tick] = _predictedPos;
-                }
-                _lastAppliedPos = _predictedPos;
-            }
-
-            Prune(serverTick);
-        }
-
-        private void StepPrediction(ref Vector3 position, ref int facingX, ref int facingZ, RoomCommand command)
-        {
-            if (command.DX == 0 && command.DZ == 0) return;
-
-            float step = command.DX != 0 && command.DZ != 0 ? _diagPerTick : _speedPerTick;
-            position.x += command.DX * step;
-            position.z += command.DZ * step;
-            position.x = Mathf.Clamp(position.x - _center.x, -_arenaHalfMeters, _arenaHalfMeters) + _center.x;
-            position.z = Mathf.Clamp(position.z - _center.z, -_arenaHalfMeters, _arenaHalfMeters) + _center.z;
-            facingX = command.DX;
-            facingZ = command.DZ;
-        }
-
-        private void Prune(int serverTick)
-        {
-            var stale = new List<int>();
-            foreach (int tick in _predicted.Keys)
-            {
-                if (tick <= serverTick) stale.Add(tick);
-            }
-            foreach (int tick in stale) _predicted.Remove(tick);
-
-            stale.Clear();
-            foreach (int tick in _pending.Keys)
-            {
-                if (tick <= serverTick) stale.Add(tick);
-            }
-            foreach (int tick in stale) _pending.Remove(tick);
         }
 
         private RoomCommand ReadCommand()
@@ -686,7 +587,6 @@ namespace AI003.Net
             _popups.Clear();
             DestroyArena();
             _bridge.Clear();
-            _localAttackUntil = 0f;
             _localHitUntil = 0f;
 
             if (_local != null) _local.enabled = true;
@@ -717,7 +617,7 @@ namespace AI003.Net
 
             string eventText = Time.unscaledTime < _lastEventUntil ? "   " + _lastEvent : "";
             GUI.Label(new Rect(16f, Screen.height - 68f, 760f, 24f),
-                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {_predictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
+                $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {PredictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
             GUI.Label(new Rect(16f, Screen.height - 44f, 760f, 24f),
                 $"WASD / arrows move   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
 

@@ -5,14 +5,13 @@ using UnityEngine;
 namespace AI003.Ecs
 {
     /// <summary>
-    /// Applies fighter state to the managed presentation objects: local position,
-    /// remote smoothing, attack lunge, hit pulse, death collapse and animation.
-    /// This is the ECS replacement for the old per-avatar Update loops.
+    /// Applies the Burst-updated fighter state to managed presentation objects:
+    /// attack lunge, hit colour, death rotation and animation parameters.
     /// </summary>
     [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [UpdateAfter(typeof(FighterStateUpdateSystem))]
     public partial struct FighterViewSystem : ISystem
     {
-        private const float CollapseSeconds = 0.25f;
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly MaterialPropertyBlock Block = new MaterialPropertyBlock();
 
@@ -27,32 +26,12 @@ namespace AI003.Ecs
 
         public void OnUpdate(ref SystemState state)
         {
-            float deltaTime = SystemAPI.Time.DeltaTime;
-            if (deltaTime <= 0f) deltaTime = 1f / 60f;
             MaterialPropertyBlock block = Block;
 
             foreach (var (fighter, anim, view) in SystemAPI
-                         .Query<RefRW<FighterState>, RefRW<FighterAnim>, RefRO<FighterView>>())
+                         .Query<RefRO<FighterState>, RefRO<FighterAnim>, RefRO<FighterView>>())
             {
-                ref FighterState fighterState = ref fighter.ValueRW;
-                fighterState.LungeRemaining = math.max(0f, fighterState.LungeRemaining - deltaTime);
-                fighterState.HitRemaining = math.max(0f, fighterState.HitRemaining - deltaTime);
-
-                if (fighterState.Remote)
-                {
-                    float t = 1f - math.exp(-12f * deltaTime);
-                    fighterState.Position = math.lerp(fighterState.Position, fighterState.TargetPosition, t);
-
-                    float yawDelta = fighterState.TargetYaw - fighterState.Yaw;
-                    yawDelta -= 360f * math.round(yawDelta / 360f);
-                    fighterState.Yaw += yawDelta * t;
-                }
-
-                fighterState.Collapse = fighterState.Alive
-                    ? math.max(0f, fighterState.Collapse - deltaTime / CollapseSeconds)
-                    : math.min(1f, fighterState.Collapse + deltaTime / CollapseSeconds);
-
-                Apply(view.ValueRO, fighterState, anim.ValueRO, block);
+                Apply(view.ValueRO, fighter.ValueRO, anim.ValueRO, block);
             }
         }
 

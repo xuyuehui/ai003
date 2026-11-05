@@ -45,4 +45,51 @@ namespace AI003.Ecs
         public bool Grounded;
         public float PlayRate;
     }
+
+    /// <summary>Integer-millimetre prediction state for the local fighter.</summary>
+    public struct PredictionState : IComponentData
+    {
+        public int2 PositionMm;
+        public int FacingX;
+        public int FacingZ;
+        public int Tick;
+        public float Accumulator;
+        public int2 CenterMm;
+        public int HalfExtentMm;
+        public int SpeedMm;
+        public int DiagonalMm;
+    }
+
+    /// <summary>Latest player command, written by the network bridge each frame.</summary>
+    public struct PredictionInput : IComponentData
+    {
+        public int DX;
+        public int DZ;
+        public bool Attack;
+    }
+
+    /// <summary>Newest authoritative snapshot, applied by the prediction system.</summary>
+    public struct ServerSnapshot : IComponentData
+    {
+        public int2 PositionMm;
+        public int Tick;
+        public bool Pending;
+    }
+
+    /// <summary>One predicted tick; the network layer drains unsent steps.</summary>
+    public struct PredictionStep : IBufferElementData
+    {
+        public int Tick;
+        public int DX;
+        public int DZ;
+        public bool Attack;
+        public bool Sent;
+    }
+
+    /// <summary>Predicted position per tick, kept for rollback/replay.</summary>
+    public struct PredictionHistoryElement : IBufferElementData
+    {
+        public int Tick;
+        public int2 PositionMm;
+    }
 }

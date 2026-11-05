@@ -64,10 +64,13 @@ namespace AI003.EditorTools
 
                 double elapsed = Time.realtimeSinceStartupAsDouble - _playStartedAt;
                 RoomClient room = RoomClient.Instance;
+                var bootstrap = UnityEngine.Object.FindFirstObjectByType<AI003.World.WorldBootstrap>();
+                bool worldReady = bootstrap != null && bootstrap.IsReady;
                 // Wait until the local fighter exists and prediction has caught up:
                 // during world bootstrap the controller is missing for a moment and
                 // the room tick would otherwise be captured ahead of the prediction.
                 bool ready = room != null && room.InRoom && room.Players >= 2
+                             && worldReady
                              && room.PredictedTick >= room.ServerTick;
 
                 if (!_captured && ready && elapsed > ReadySeconds)
