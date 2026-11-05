@@ -94,6 +94,14 @@ namespace AI003.EditorTools
                     }
                     else if (step == 2 && elapsed > 10.0)
                     {
+                        // Make sure the demo scene stays playable after a re-bake.
+                        var worldScene = EditorSceneManager.OpenScene(WorldScene, OpenSceneMode.Single);
+                        if (UnityEngine.Object.FindFirstObjectByType<AI003.World.WorldBootstrap>() == null)
+                        {
+                            new GameObject("[AI003] World").AddComponent<AI003.World.WorldBootstrap>();
+                        }
+                        EditorSceneManager.SaveScene(worldScene);
+
                         bool cached = System.IO.Directory.Exists("Assets/SceneDependencyCache");
                         Debug.Log($"[AI003][BAKE-BATCH] bake cache={cached} -> {(cached ? "PASS" : "FAIL")}");
                         EditorApplication.update -= Tick;
@@ -185,6 +193,9 @@ namespace AI003.EditorTools
 
             // World scene: a SubScene pointing at the content scene.
             Scene world = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            // Keep the scene directly playable: camera/player/GO fallback terrain.
+            var demoRoot = new GameObject("[AI003] World");
+            demoRoot.AddComponent<AI003.World.WorldBootstrap>();
             var subSceneObject = new GameObject("TerrainSubScene");
             var subScene = subSceneObject.AddComponent<Unity.Scenes.SubScene>();
             EditorSceneManager.SaveScene(world, WorldScene);
