@@ -119,13 +119,14 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
     `TerrainStreaming` 的启动帧批量创建时**不绘制**（[灰色证据](docs/images/ecs-terrain-runtime-entities.png)），
     组件/包围盒/材质/网格检查均一致，疑似 6.6 运行时批量注册的初始化竞态；
     早期未开 instancing 时为洋红/灰色（[洋红](docs/images/ecs-terrain-shader-fail.png)、[灰色](docs/images/ecs-terrain-ecs-gray.png)）
-  - SubScene 烘焙路径（`Assets/Editor/BakeTerrainSubScene.cs`）已把 GUID 与 importer override
-    写入 meta，但批处理下内容场景仍走 `DefaultImporter`，无烘焙产物
-  - 结论：运行时批量实体 + 自定义 shader 在 6.6 下不稳定；默认仍用 GameObject 渲染，
-    ECS 地形路径保留为 `AI003_TERRAIN_ECS=1` 的实验开关。复现与证据汇总见
+  - **SubScene 烘焙路径可用**：在编辑器里 Open/Close `BakedWorld.unity` 的 `TerrainSubScene`
+    （或菜单 `AI003 → Bake Terrain SubScene`）后，内容场景由 `SubSceneImporter` 烘焙，
+    Play 模式下地形 chunk 由 Entities Graphics 渲染（[截图](docs/images/ecs-terrain-baked.png)）；
+    批处理 `-batchmode` 不会触发烘焙产物
+  - 结论：静态世界可用 **SubScene 烘焙**；运行时流式地形仍需 BRG/其他方案，默认仍用
+    GameObject 渲染，`AI003_TERRAIN_ECS=1` 保留为运行时实验开关。细节见
     [Entities Graphics 复测报告](docs/entities-graphics-report.md)；骨骼角色仍需 DOTS skinning
-- 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
-- 验证：PlayMode 5/5（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
+- 验证：PlayMode 7/7（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 
 限制：地形/角色物理未 ECS 化；Entities Graphics 运行时批量实体渲染不稳定，默认走 GameObject 路径（见上）。
 

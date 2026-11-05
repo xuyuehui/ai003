@@ -25,6 +25,7 @@ namespace AI003.EditorTools
         private const string MaterialPath = Root + "/TerrainBaked.mat";
         private const string MeshDir = Root + "/Meshes";
 
+        [UnityEditor.MenuItem("AI003/Bake Terrain SubScene")]
         public static void Run()
         {
             try
@@ -70,6 +71,7 @@ namespace AI003.EditorTools
                     int cx = ChunkStartX + x;
                     int cz = ChunkStartZ + z;
                     Mesh mesh = WorldTerrain.BuildChunkMesh(data, cx, cz);
+                    mesh.name = $"chunk_{cx}_{cz}";
                     string meshPath = $"{MeshDir}/chunk_{cx}_{cz}.asset";
                     AssetDatabase.DeleteAsset(meshPath);
                     AssetDatabase.CreateAsset(mesh, meshPath);
@@ -78,14 +80,17 @@ namespace AI003.EditorTools
                     chunk.transform.SetParent(root.transform, false);
                     chunk.transform.position = new Vector3(
                         -half + cx * chunkSize, 0f, -half + cz * chunkSize);
-                    chunk.AddComponent<MeshFilter>().sharedMesh =
-                        AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+                    // Use the object returned by CreateAsset directly: LoadAssetAtPath
+                    // can return a stale/other mesh until the asset is imported, which
+                    // made every chunk reference the same mesh.
+                    chunk.AddComponent<MeshFilter>().sharedMesh = mesh;
                     var renderer = chunk.AddComponent<MeshRenderer>();
                     renderer.sharedMaterial = material;
                     renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 }
             }
 
+            AssetDatabase.SaveAssets();
             EditorSceneManager.SaveScene(content, ContentScene);
 
             // World scene: a SubScene pointing at the content scene.
@@ -111,9 +116,7 @@ namespace AI003.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            // Force the subscene importer to bake (content scene is closed now).
-            // AssetDatabase.SetImporterOverrideInternal is internal but is the only
-            // way to select SubSceneImporter from batch mode.
+            // Select SubSceneImporter for the content scene (internal API).
             var importerType = System.Type.GetType("Unity.Scenes.Editor.SubSceneImporter, Unity.Scenes.Editor");
             var overrideMethod = typeof(AssetDatabase).GetMethod(
                 "SetImporterOverrideInternal",
@@ -123,6 +126,21 @@ namespace AI003.EditorTools
             {
                 overrideMethod.Invoke(null, new object[] { ContentScene, importerType });
             }
+
+            // Opening and closing the SubScene is what makes the importer produce the
+            // baked entity scene; a plain reimport silently falls back to DefaultImporter.
+            var openType = System.Type.GetType("Unity.Scenes.Editor.SubSceneUtility, Unity.Scenes.Editor");
+            var closeType = System.Type.GetType("Unity.Scenes.Editor.SubSceneInspectorUtility, Unity.Scenes.Editor");
+            var subScenes = new Unity.Scenes.SubScene[] { subScene };
+            openType?.GetMethod("EditScene",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                ?.Invoke(null, new object[] { subScenes });
+            closeType?.GetMethod("CloseSceneWithoutSaving",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                ?.Invoke(null, new object[] { subScenes });
+
+            // Force the cache regenerates instead of reusing a stale artifact.
+            AssetDatabase.DeleteAsset("Assets/SceneDependencyCache");
             AssetDatabase.ImportAsset(ContentScene, ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
 
