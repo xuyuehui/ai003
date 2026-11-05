@@ -79,6 +79,15 @@ namespace AI003.World
             {
                 gameObject.AddComponent<TerrainEcsStreaming>();
             }
+            if (GetComponent<TerrainTileStreaming>() == null)
+            {
+                gameObject.AddComponent<TerrainTileStreaming>();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            TerrainHeightField.Unregister();
         }
 
         private void Start()
@@ -101,6 +110,8 @@ namespace AI003.World
                 Debug.LogError($"[AI003] cannot load world: {e.Message}");
                 return;
             }
+
+            TerrainHeightField.Register(Data.Heights, Data.Resolution, Data.CellSize, Data.SizeMeters);
 
             ConfigureRendering();
 
@@ -226,6 +237,10 @@ namespace AI003.World
                 extraYaw = parsed;
             }
             model.transform.localRotation = Quaternion.Euler(0f, _modelBaseYaw + extraYaw, 0f);
+            if (System.Environment.GetEnvironmentVariable("AI003_DOTS_BONES") == "1")
+            {
+                model.AddComponent<DotsBoneRig>();
+            }
             _model = model.transform;
             Debug.Log($"[AI003] model yaw base {_modelBaseYaw:F0} + extra {extraYaw:F0}");
             model.transform.localScale = Vector3.one * 0.45f;

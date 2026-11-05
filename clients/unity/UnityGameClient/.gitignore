@@ -64,3 +64,7 @@ Assets/Screenshots/
 # Entities SubScene bake cache (generated)
 Assets/SceneDependencyCache/
 Assets/SceneDependencyCache.meta
+
+# Generated bake meshes (scripts/bake-unity-terrain.cmd or AI003/Bake Tiled Streaming Terrain)
+Assets/World/Baked/Meshes/
+Assets/World/Baked/Tiles/Meshes/

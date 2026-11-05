@@ -126,14 +126,24 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   - 烘焙触发：`scripts\bake-unity-terrain.cmd`（批处理状态机，自动 Open/Close + 重导入），
     或菜单 `AI003 → Bake Terrain SubScene`
   - 运行时 **ECS 渲染流式**：`TerrainEcsStreaming` 按摄像机距离（900 m）给烘焙 chunk 加/去
-    `DisableRendering`；实测 152/256 → 0（[截图](docs/images/ecs-terrain-runtime-stream.png)）；
-    实体常驻内存，内存级流式仍是后续工作
-  - 结论：**静态世界可用 SubScene 烘焙 + URP Lit 渲染**；运行时流式地形仍不走 ECS（默认 GameObject），
-    `AI003_TERRAIN_ECS=1` 保留为实验开关。细节见
-    [Entities Graphics 复测报告](docs/entities-graphics-report.md)；骨骼角色仍需 DOTS skinning
-- 验证：PlayMode 7/7（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
+    `DisableRendering`；实测 152/256 → 0（[截图](docs/images/ecs-terrain-runtime-stream.png)）
+  - **内存级 tile 流式**：`StreamingWorld.unity` 把世界拆成 16 个 512 m tile（各自独立 SubScene），
+    运行时 `TerrainTileStreaming` 用 `SceneSystem.LoadSceneAsync/UnloadScene` 按距离加载/卸载；
+    实测 14/16 tile 加载、实体 224 → 0（远离）→ 240（返回），证据
+    [ecs-tile-streaming.png](clients/unity/UnityGameClient/Assets/Screenshots/ecs-tile-streaming.png)；
+    烘焙命令：`AI003 → Bake Tiled Streaming Terrain`（或批处理 `-executeMethod AI003.EditorTools.BakeTiledTerrain.RunBatch`）
+  - **DOTS 骨骼动画（混合蒙皮）**：`DotsBoneRig` 把 45 根骨骼映射为 ECS 实体，
+    `BoneAnimationSystem`（Burst `IJobEntity`）驱动旋转，再回写 GameObject 骨骼由 SkinnedMeshRenderer 蒙皮；
+    环境变量 `AI003_DOTS_BONES=1` 启用；证据
+    [dots-bones-character.png](clients/unity/UnityGameClient/Assets/Screenshots/dots-bones-character.png)
+  - **ECS 地形碰撞**：`TerrainHeightField` 注册高度图，`TerrainClampSystem`（Burst job）把带
+    `TerrainBody` 的实体钳制到地形高度；PlayMode 测试 `TerrainBodyIsClampedToHeightField` 通过
+  - 结论：**静态世界可用 SubScene 烘焙 + URP Lit 渲染**；`AI003_TERRAIN_ECS=1` 保留为运行时实验开关。
+    烘焙网格资产不再入库（`.gitignore`），克隆后跑一次烘焙脚本生成。细节见
+    [Entities Graphics 复测报告](docs/entities-graphics-report.md)
+- 验证：PlayMode **8/8**（含实体→Transform、整数预测、Burst 基准、ECS 地形碰撞）；`demo-room` 双端截图确认
 
-限制：地形/角色物理未 ECS 化；Entities Graphics 运行时批量实体渲染不稳定（烘焙路径正常），默认走 GameObject 路径（见上）。
+限制：角色移动仍由 GameObject CharacterController 驱动（ECS 地形碰撞用于 ECS 实体）；蒙皮仍由 Unity SkinnedMeshRenderer 完成。
 
 ## 已实现的技术点
 

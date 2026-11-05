@@ -5,6 +5,7 @@
         "AI003.Runtime",
         "AI003.Ecs",
         "Unity.Entities",
+        "Unity.Transforms",
         "Unity.Collections",
         "Unity.Mathematics",
         "UnityEngine.TestRunner",

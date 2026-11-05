@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e738dd47e6ecb754d8a505096f6f3d83, type: 3}
+  m_Name: TerrainTileCatalog
+  m_EditorClassIdentifier: AI003.Runtime::AI003.World.TerrainTileCatalog
+  Guids:
+  - 249a95b38859cba4eb6e99dec83d65b8
+  - cef498f7dec7e3e4ea6dc907b412f965
+  - 0c2181253c3eed248ba7c48b3f0347d3
+  - fb112b7b062dbd9458b1a38730b0f6bd
+  - 4d4c9e24a05a22c4296ea50c71f15b67
+  - 126fbb4f732223742a3c0ec9b9702b27
+  - 8eea14df353c9c843a3412c8839fd08c
+  - 715b8afc63214da40a42252286cbf769
+  - 24cb20f98bfb3ef48b4e10f3ac3fd8a8
+  - e04456af6baa1884995bedb7c8f971bf
+  - 46bcdca7d1c3cd2498c16ff31409fca4
+  - bced0cb030491ae43a0ec93bfdf6cd2b
+  - 5f2f9dd18083ea44b92ac21150a76f22
+  - 3836dd2a061645a4d90edcbae7f8a47e
+  - 55c760001c7fc4643809103d9f1af248
+  - c22d568ba18f6a74b99344530d7ca2bf
+  Coords:
+  - {x: 0, y: 0}
+  - {x: 1, y: 0}
+  - {x: 2, y: 0}
+  - {x: 3, y: 0}
+  - {x: 0, y: 1}
+  - {x: 1, y: 1}
+  - {x: 2, y: 1}
+  - {x: 3, y: 1}
+  - {x: 0, y: 2}
+  - {x: 1, y: 2}
+  - {x: 2, y: 2}
+  - {x: 3, y: 2}
+  - {x: 0, y: 3}
+  - {x: 1, y: 3}
+  - {x: 2, y: 3}
+  - {x: 3, y: 3}
+  TilesPerAxis: 4
+  TileSizeMeters: 512

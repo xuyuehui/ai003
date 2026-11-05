@@ -33,3 +33,13 @@ URP Lit 的 DOTS instancing 是官方支持的，256 个 chunk 一起渲染不�
   `DisableRendering`（900 m 视野；实测 152/256 → 0，见截图）；实体常驻内存，
   真正的内存流式（分块 SubScene/BRG）仍是后续工作
 - 骨骼角色仍需 DOTS skinning
+## 运行时流式与骨骼/物理补充
+
+- **内存级 tile 流式**：`StreamingWorld.unity` 拆 16 个 512 m tile（独立 SubScene），
+  `TerrainTileStreaming` 用 `SceneSystem.LoadSceneAsync/UnloadScene` 按距离加载/卸载；
+  实测 14/16 tile、实体 224 → 0 → 240
+- **DOTS 骨骼**：`DotsBoneRig` 把 45 根骨骼映射为实体，`BoneAnimationSystem`（Burst）驱动，
+  回写 GameObject 骨骼由 SkinnedMeshRenderer 蒙皮（`AI003_DOTS_BONES=1`）
+- **ECS 地形碰撞**：`TerrainClampSystem` 用高度图钳制 `TerrainBody` 实体，PlayMode 测试通过
+- 烘焙网格资产不入库（约 55 MB），克隆后跑 `scripts/bake-unity-terrain.cmd` 或
+  `AI003 → Bake Tiled Streaming Terrain` 生成
