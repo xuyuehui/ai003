@@ -88,6 +88,11 @@ UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地
 
 ![Unity vs UE5 room](docs/images/demo-room.png)
 
+```powershell
+# 全量验证（含 PlayMode、画面对照、同房演示；约 15–20 分钟）
+.\scripts\smoke-all.cmd -WithCompare -WithRoom
+```
+
 ## 已实现的技术点
 
 **里程碑 1：开放世界地形 + 角色跑动**（已完成）
@@ -358,7 +363,7 @@ ue5-world  PASS
 | `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
 | `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧、合成对比图与差分热力图，可设阈值 |
 | `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成 |
-| `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总 |
+| `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
 Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。

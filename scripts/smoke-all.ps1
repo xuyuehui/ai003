@@ -12,7 +12,8 @@ param(
     [switch]$SkipUEWorld,
     [switch]$SkipGoTests,
     [switch]$SkipDemo,
-    [switch]$WithCompare
+    [switch]$WithCompare,
+    [switch]$WithRoom
 )
 
 $ErrorActionPreference = 'Stop'
@@ -114,6 +115,13 @@ try {
         & (Join-Path $scripts 'demo-compare.ps1') -MaxBrightnessDelta 8 -MinWithin24 80
         if ($LASTEXITCODE -ne 0) { throw 'demo compare failed' }
         $results['compare'] = 'PASS'
+    }
+
+    if ($WithRoom) {
+        Write-Host '==> Demo room (Unity + UE bot in one room)' -ForegroundColor Cyan
+        & (Join-Path $scripts 'demo-room.ps1') -Seconds 3 -NoPublish
+        if ($LASTEXITCODE -ne 0) { throw 'demo room failed' }
+        $results['room'] = 'PASS'
     }
 }
 finally {

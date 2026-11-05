@@ -88,7 +88,8 @@ cd server; go build ./...; go vet ./...; go test ./... -count=1
 .\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
 .\scripts\demo-compare.cmd                      # 双端同机位对照（约 2 min）
 .\scripts\demo-compare.cmd -MaxBrightnessDelta 8 -MinWithin24 80   # 带阈值
-.\scripts\smoke-all.cmd -WithCompare -SkipPlayMode                 # 全链路含对照
+.\scripts\demo-room.cmd                        # 同房双端 + 双端截图
+.\scripts\smoke-all.cmd -WithCompare -WithRoom                     # 全链路
 
 # 全链路（可选跳过引擎）
 .\scripts\smoke-all.cmd -SkipUnity -SkipUE
