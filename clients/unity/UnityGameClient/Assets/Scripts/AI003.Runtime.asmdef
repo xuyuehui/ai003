@@ -2,6 +2,7 @@
     "name": "AI003.Runtime",
     "rootNamespace": "AI003",
     "references": [
+        "AI003.Ecs",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

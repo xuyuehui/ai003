@@ -93,6 +93,23 @@ UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地
 .\scripts\smoke-all.cmd -WithCompare -WithRoom
 ```
 
+## Unity 客户端：ECS 架构
+
+Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6（DOTS）**：
+
+- `Assets/Scripts/Ecs/`（asmdef `AI003.Ecs`）：
+  - 组件：`FighterState`（位置/朝向/前冲/受击/倒地）、`LocalFighterTag`、`RemoteFighterTag`、
+    `FighterView`（Transform/Animator/Renderer 引用）、`FighterAnim`
+  - 系统：`FighterViewSystem`（`SimulationSystemGroup`）负责远端插值、攻击前冲、受击闪红、
+    死亡倒地、动画参数与 Transform 写回
+  - `RoomEcsBridge`：把网络层的房间/世界快照写成实体，是 MonoBehaviour 与 ECS 的边界
+- 网络（WebSocket/协议解析）、地形、角色控制器仍保留在 MonoBehaviour：
+  ECS 负责"状态 + 表现"，I/O 与物理沿用 Unity 既有实现（混合架构，DOTS 常见做法）
+- 验证：PlayMode 测试 `FighterEcsTests.LocalEntityDrivesTransform` 断言实体位置会写回 Transform；
+  `demo-room` 双端截图确认本地/远端角色都由 ECS 驱动
+
+限制：预测的整数步进仍在 `RoomClient`（网络层）里，尚未搬进 ECS/Burst；地形与角色物理也未 ECS 化。
+
 ## 已实现的技术点
 
 **里程碑 1：开放世界地形 + 角色跑动**（已完成）

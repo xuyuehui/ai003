@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AI003.Ecs;
 using AI003.Player;
 using AI003.World;
 using Newtonsoft.Json.Linq;
@@ -46,6 +47,7 @@ namespace AI003.Net
         private ConnectionBootstrap _connection;
         private ThirdPersonController _local;
         private Animator _localAnimator;
+        private RoomEcsBridge _bridge;
         private WorldData _world;
 
         private int _cursor;
@@ -139,6 +141,7 @@ namespace AI003.Net
                 return;
             }
             Instance = this;
+            _bridge = RoomEcsBridge.EnsureExists();
             // Opt-in: the room drives the avatar, so tests and normal exploration
             // keep the third-person controller unless AI003_ROOM=1 is set.
             _enabled = System.Environment.GetEnvironmentVariable("AI003_ROOM") == "1";
@@ -200,6 +203,7 @@ namespace AI003.Net
                 _local = FindFirstObjectByType<ThirdPersonController>();
                 if (_local == null) return;
                 _localAnimator = _local.GetComponentInChildren<Animator>();
+                _bridge.EnsureLocal(_local.transform, _localAnimator, _local.GetComponentInChildren<Renderer>());
             }
 
             float now = Time.unscaledTime;
@@ -288,6 +292,7 @@ namespace AI003.Net
                 _groundY = _center.y;
                 _local.enabled = false;
                 _localAnimator = _local.GetComponentInChildren<Animator>();
+                _bridge.EnsureLocal(_local.transform, _localAnimator, _local.GetComponentInChildren<Renderer>());
             }
 
             _speedPerTick = (body["speedMMPerTick"]?.Value<float>() ?? 250f) / 1000f;
@@ -377,11 +382,11 @@ namespace AI003.Net
                         case "attack":
                             if (source == _playerId)
                             {
-                                _localAttackUntil = Time.unscaledTime + 0.18f;
+                                _bridge.TriggerAttack(_playerId);
                             }
-                            else if (source != null && _remotes.TryGetValue(source, out RemoteAvatar attacker) && attacker != null)
+                            else if (source != null && _remotes.ContainsKey(source))
                             {
-                                attacker.TriggerAttack();
+                                _bridge.TriggerAttack(source);
                             }
                             break;
 
@@ -392,27 +397,26 @@ namespace AI003.Net
                                 _localHitUntil = Time.unscaledTime + 0.25f;
                                 if (_local != null) AddPopup(_local.transform.position, "-" + damage);
                             }
-                            else if (target != null && _remotes.TryGetValue(target, out RemoteAvatar victim) && victim != null)
+                            else if (target != null && _remotes.ContainsKey(target))
                             {
-                                victim.TriggerHit();
-                                AddPopup(victim.TargetPosition, "-" + damage);
+                                _bridge.TriggerHit(target);
+                                AddPopup(_remotes[target].transform.position, "-" + damage);
                             }
                             break;
 
                         case "death":
                             _lastEvent = "died - respawning";
-                            if (target != _playerId && target != null &&
-                                _remotes.TryGetValue(target, out RemoteAvatar dead) && dead != null)
+                            if (target != _playerId && target != null && _remotes.ContainsKey(target))
                             {
-                                dead.SetAlive(false);
+                                _bridge.SetRemoteAlive(target, false);
                             }
                             break;
 
                         case "respawn":
                             _lastEvent = "respawned";
-                            if (source != null && _remotes.TryGetValue(source, out RemoteAvatar reborn) && reborn != null)
+                            if (source != null && _remotes.ContainsKey(source))
                             {
-                                reborn.SetAlive(true);
+                                _bridge.SetRemoteAlive(source, true);
                             }
                             break;
                     }
@@ -441,7 +445,11 @@ namespace AI003.Net
                 anim = speed > 6.5f ? "run" : speed > 0.2f ? "walk" : "idle";
             }
             _lastPositions[id] = position;
-            avatar.Apply(position, yaw, alive ? anim : "idle");
+
+            float animSpeed = anim == "run" ? 1f : anim == "walk" ? 0.35f : anim == "jump" ? 0.4f : anim == "swim" ? 0.3f : 0f;
+            float playRate = anim == "walk" ? 0.7f : anim == "swim" ? 0.6f : 1f;
+            _bridge.UpsertRemote(id, position, yaw, alive, animSpeed, playRate,
+                avatar.transform, avatar.Animator, avatar.Renderer);
         }
 
         private void RemoveMissing(HashSet<string> seen)
@@ -457,6 +465,7 @@ namespace AI003.Net
                 {
                     Destroy(avatar.gameObject);
                 }
+                _bridge.RemoveRemote(id);
                 _remotes.Remove(id);
                 _lastPositions.Remove(id);
             }
@@ -476,7 +485,7 @@ namespace AI003.Net
             SendTickInput(tick, command);
         }
 
-        /// <summary>Applies the predicted state to the avatar immediately (no 20 Hz lag).</summary>
+        /// <summary>Hands the predicted state to the ECS; FighterViewSystem applies it.</summary>
         private void ApplyLocalPrediction()
         {
             if (_local == null) return;
@@ -484,25 +493,8 @@ namespace AI003.Net
             float moved = Vector3.Distance(_predictedPos, _lastAppliedPos);
             _lastAppliedPos = _predictedPos;
 
-            _local.transform.position = _predictedPos;
             float yaw = YawFromFacing(_facingX, _facingZ);
-            _local.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-
-            // Attack lunge: a short forward nudge on top of the predicted position.
-            if (Time.unscaledTime < _localAttackUntil)
-            {
-                float progress = 1f - (_localAttackUntil - Time.unscaledTime) / 0.18f;
-                _local.transform.position += Quaternion.Euler(0f, yaw, 0f) * Vector3.forward
-                                             * (Mathf.Sin(progress * Mathf.PI) * 0.35f);
-            }
-
-            if (_localAnimator != null)
-            {
-                bool moving = moved > 0.01f;
-                _localAnimator.SetFloat("Speed", moving ? 0.6f : 0f);
-                _localAnimator.SetBool("Grounded", true);
-                _localAnimator.speed = moving ? 1f : 1f;
-            }
+            _bridge.SetLocal(_predictedPos, yaw, moved > 0.01f ? 0.6f : 0f, !Dead);
         }
 
         /// <summary>Compares the authoritative frame with the prediction and replays if needed.</summary>
@@ -693,6 +685,7 @@ namespace AI003.Net
             _lastPositions.Clear();
             _popups.Clear();
             DestroyArena();
+            _bridge.Clear();
             _localAttackUntil = 0f;
             _localHitUntil = 0f;
 

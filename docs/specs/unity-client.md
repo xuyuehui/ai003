@@ -29,6 +29,14 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 运行时脚本必须属于 `AI003.Runtime`；该程序集显式引用 `Unity.InputSystem`。
 - 命名空间：`AI003.Net`、`AI003.World`、`AI003.Player`、`AI003.EditorTools`、`AI003.Tests`。
 - 编辑器脚本不得进入运行时程序集；运行时脚本不得引用 `UnityEditor`。
+- ECS 层（`Assets/Scripts/Ecs/`，asmdef `AI003.Ecs`，引用 `Unity.Entities`/`Unity.Mathematics`/
+  `Unity.Collections`/`Unity.Transforms`）：组件 `FighterState`、`LocalFighterTag`、`RemoteFighterTag`、
+  `FighterView`、`FighterAnim`；系统 `FighterViewSystem`（`SimulationSystemGroup`）负责远端插值、
+  前冲、受击闪红、倒地与 Transform/Animator 写回。
+- ECS 系统必须是 unmanaged struct；托管对象（如 `MaterialPropertyBlock`）放 static 字段。
+- 桥接：`RoomEcsBridge` 把房间/世界快照转换为实体；网络层不直接写 Transform。
+- 边界：网络 I/O、地形、角色物理仍为 MonoBehaviour；预测整数步进暂留 `RoomClient`。
+- 测试：`FighterEcsTests.LocalEntityDrivesTransform`（PlayMode）断言实体位置写回 Transform。
 
 ## 3. 代码规范
 
