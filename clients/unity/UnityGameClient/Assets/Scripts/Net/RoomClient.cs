@@ -48,6 +48,7 @@ namespace AI003.Net
         private ThirdPersonController _local;
         private Animator _localAnimator;
         private RoomEcsBridge _bridge;
+        private Camera _roomCamera;
         private WorldData _world;
 
         private int _cursor;
@@ -477,27 +478,61 @@ namespace AI003.Net
 
         private RoomCommand ReadCommand()
         {
+            bool attack = false;
+            float ix = 0f, iz = 0f;
+
             if (Time.unscaledTime < _debugUntil)
             {
-                _lastDX = _debugDX;
-                _lastDZ = _debugDZ;
-                return new RoomCommand { DX = _debugDX, DZ = _debugDZ, Attack = _debugAttack };
+                ix = _debugDX;
+                iz = _debugDZ;
+                attack = _debugAttack;
+            }
+            else
+            {
+                var keyboard = Keyboard.current;
+                if (keyboard != null)
+                {
+                    if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) ix += 1f;
+                    if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) ix -= 1f;
+                    if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) iz += 1f;
+                    if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) iz -= 1f;
+                    attack = keyboard.spaceKey.isPressed || keyboard.leftCtrlKey.isPressed;
+                }
             }
 
-            int dx = 0, dz = 0;
-            bool attack = false;
-            var keyboard = Keyboard.current;
-            if (keyboard != null)
-            {
-                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) dx += 1;
-                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) dx -= 1;
-                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) dz += 1;
-                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) dz -= 1;
-                attack = keyboard.spaceKey.isPressed || keyboard.leftCtrlKey.isPressed;
-            }
+            MapToWorld(ix, iz, out int dx, out int dz);
             _lastDX = dx;
             _lastDZ = dz;
             return new RoomCommand { DX = dx, DZ = dz, Attack = attack };
+        }
+
+        /// <summary>
+        /// Maps stick input (right / forward) onto the eight protocol directions using
+        /// the camera basis, so W always moves away from the camera (the open-world
+        /// controller does the same); without this the room felt inverted.
+        /// </summary>
+        private void MapToWorld(float ix, float iz, out int dx, out int dz)
+        {
+            dx = 0;
+            dz = 0;
+            if (Mathf.Abs(ix) < 0.01f && Mathf.Abs(iz) < 0.01f) return;
+
+            Vector3 forward = Vector3.forward;
+            Vector3 right = Vector3.right;
+            if (_roomCamera == null) _roomCamera = Camera.main;
+            if (_roomCamera != null)
+            {
+                forward = Vector3.ProjectOnPlane(_roomCamera.transform.forward, Vector3.up).normalized;
+                right = Vector3.ProjectOnPlane(_roomCamera.transform.right, Vector3.up).normalized;
+            }
+
+            Vector3 wish = forward * iz + right * ix;
+            if (wish.sqrMagnitude < 0.0001f) return;
+
+            float angle = Mathf.Atan2(wish.x, wish.z) * Mathf.Rad2Deg;
+            float snapped = Mathf.Round(angle / 45f) * 45f * Mathf.Deg2Rad;
+            dx = Mathf.RoundToInt(Mathf.Sin(snapped));
+            dz = Mathf.RoundToInt(Mathf.Cos(snapped));
         }
 
         private void SendTickInput(int tick, RoomCommand command)
@@ -629,7 +664,7 @@ namespace AI003.Net
             GUI.Label(new Rect(16f, Screen.height - 68f, 760f, 24f),
                 $"{RoomId}  hp {HP}/{MaxHP}  tick {Tick} / pred {PredictedTick}  fighters {Players}  corr {_corrections}{eventText}", _style);
             GUI.Label(new Rect(16f, Screen.height - 44f, 760f, 24f),
-                $"WASD / arrows move   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
+                $"WASD (camera relative)   Space attack   reconcile {_lastError * 1000f:F0} mm", _style);
 
             float now = Time.unscaledTime;
 
