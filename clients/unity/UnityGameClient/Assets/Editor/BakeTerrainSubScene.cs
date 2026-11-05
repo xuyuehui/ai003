@@ -15,14 +15,15 @@ namespace AI003.EditorTools
     /// </summary>
     public static class BakeTerrainSubScene
     {
-        private const int ChunkStartX = 8;
-        private const int ChunkStartZ = 6;
-        private const int ChunkCount = 2;
+        private const int ChunkStartX = 0;
+        private const int ChunkStartZ = 0;
+        private const int ChunkCount = 16;
 
         private const string Root = "Assets/World/Baked";
         private const string ContentScene = Root + "/TerrainContent.unity";
         private const string WorldScene = Root + "/BakedWorld.unity";
-        private const string MaterialPath = Root + "/TerrainBaked.mat";
+        private const string MaterialPath = Root + "/TerrainBakedLit.mat";
+        private const string ColorTexturePath = Root + "/TerrainColor.asset";
         private const string MeshDir = Root + "/Meshes";
 
         [UnityEditor.MenuItem("AI003/Bake Terrain SubScene")]
@@ -48,13 +49,33 @@ namespace AI003.EditorTools
 
             WorldData data = WorldData.Load(Path.Combine(Application.streamingAssetsPath, "world"));
 
+            // URP Lit is properly DOTS-instanced, so it renders correctly at any entity
+            // count (the custom vertex-colour shader broke past a handful of chunks).
+            // The per-vertex world colours become a single world-space colour texture;
+            // chunk UVs are already normalised world coordinates.
+            Texture2D colorTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(ColorTexturePath);
+            if (colorTexture == null || colorTexture.width != data.Resolution)
+            {
+                AssetDatabase.DeleteAsset(ColorTexturePath);
+                colorTexture = new Texture2D(data.Resolution, data.Resolution, TextureFormat.RGBA32, false, true)
+                {
+                    name = "TerrainColor"
+                };
+                colorTexture.SetPixels32(data.Colors);
+                colorTexture.Apply(false, false);
+                AssetDatabase.CreateAsset(colorTexture, ColorTexturePath);
+            }
+
             Material material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
             if (material == null)
             {
-                Shader shader = Shader.Find("AI003/TerrainVertexColor");
-                if (shader == null) throw new System.InvalidOperationException("terrain shader missing");
-                material = new Material(shader) { name = "TerrainBaked", enableInstancing = true };
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) throw new System.InvalidOperationException("URP Lit shader missing");
+                material = new Material(shader) { name = "TerrainBakedLit", enableInstancing = true };
+                material.SetColor("_BaseColor", Color.white);
+                material.SetTexture("_BaseMap", colorTexture);
                 material.SetFloat("_Smoothness", 0.15f);
+                material.SetFloat("_Metallic", 0f);
                 AssetDatabase.CreateAsset(material, MaterialPath);
             }
 

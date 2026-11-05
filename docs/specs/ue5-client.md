@@ -105,8 +105,10 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   min=max=0.8 EV，`AEM_Manual` 会黑帧），供 `scripts/demo-compare.cmd` 合成。
 - 房间截图：`-AI003RoomShot` 在进房 20 s 后由引擎自身截图到
   `artifacts/demo/room-ue5.png` 并退出（不依赖窗口焦点）；`scripts/demo-room.cmd` 使用。
-- 世界尺寸由 `WorldData/world.json` 决定，`scripts/build-world.cmd -Size 4096` 可直接给 UE 换 4 km 世界；
-  UE 目前整块构建地形，没有流式加载（Unity 有）。
+- 世界尺寸由 `WorldData/world.json` 决定，`scripts/build-world.cmd -Size 4096` 可直接给 UE 换 4 km 世界。
+- 地形流式：8×8 chunk（默认 256 m/块），按玩家距离懒加载并三级 LOD：
+  ≤450 m stride1、≤900 m stride2、≤1400 m stride4；超出视野隐藏，远处 LOD 不生成碰撞。
+  每 2 s 日志 `[AI003] terrain stream: built/rebuilt/visible/last update ms`。
 - Bot：`-AI003RoomBot` 走向最近的远端玩家，1.8 m 处停下并持续攻击（服务器冷却门控）；
   `-AI003RoomPusher` 改为持续顶住目标，用于验证分离/预测校正；
   距离阈值以**厘米**为单位（`FVector::Dist2D` 返回 cm）。

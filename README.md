@@ -119,16 +119,18 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
     `TerrainStreaming` 的启动帧批量创建时**不绘制**（[灰色证据](docs/images/ecs-terrain-runtime-entities.png)），
     组件/包围盒/材质/网格检查均一致，疑似 6.6 运行时批量注册的初始化竞态；
     早期未开 instancing 时为洋红/灰色（[洋红](docs/images/ecs-terrain-shader-fail.png)、[灰色](docs/images/ecs-terrain-ecs-gray.png)）
-  - **SubScene 烘焙路径可用**：在编辑器里 Open/Close `BakedWorld.unity` 的 `TerrainSubScene`
-    （或菜单 `AI003 → Bake Terrain SubScene`）后，内容场景由 `SubSceneImporter` 烘焙，
-    Play 模式下地形 chunk 由 Entities Graphics 渲染（[截图](docs/images/ecs-terrain-baked.png)）；
-    批处理 `-batchmode` 不会触发烘焙产物
-  - 结论：静态世界可用 **SubScene 烘焙**；运行时流式地形仍需 BRG/其他方案，默认仍用
-    GameObject 渲染，`AI003_TERRAIN_ECS=1` 保留为运行时实验开关。细节见
+  - **整张 2 km 世界已烘焙并由 Entities Graphics 渲染**：地形材质改为 **URP Lit + 世界顶点色贴图**
+    （513×513 颜色纹理，chunk UV 直接是归一化世界坐标），16×16 = **256 chunk** 全量烘焙为
+    `BakedWorld.unity`；Play 下关闭 GameObject 地形后，整张地形（山川/沙漠/海岸）由 ECS 实体渲染
+    （[全景截图](docs/images/ecs-terrain-full-baked.png)）
+  - 烘焙触发：交互式 Open/Close `TerrainSubScene`（或菜单 `AI003 → Bake Terrain SubScene`）；
+    批处理 `-batchmode` 不会产生烘焙产物
+  - 结论：**静态世界可用 SubScene 烘焙 + URP Lit 渲染**；运行时流式地形仍不走 ECS（默认 GameObject），
+    `AI003_TERRAIN_ECS=1` 保留为实验开关。细节见
     [Entities Graphics 复测报告](docs/entities-graphics-report.md)；骨骼角色仍需 DOTS skinning
 - 验证：PlayMode 7/7（含实体→Transform、整数预测、Burst 基准）；`demo-room` 双端截图确认
 
-限制：地形/角色物理未 ECS 化；Entities Graphics 运行时批量实体渲染不稳定，默认走 GameObject 路径（见上）。
+限制：地形/角色物理未 ECS 化；Entities Graphics 运行时批量实体渲染不稳定（烘焙路径正常），默认走 GameObject 路径（见上）。
 
 ## 已实现的技术点
 
@@ -451,7 +453,7 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | 世界同步身份 | 大世界的 `join` 仍以会话 id 记玩家，重连会新建 | 世界玩家也改用 `clientId` 持久身份 |
 | 双端画面统一 | 对齐太阳方位/天空/雾后：亮度差 **1.8（≤5 ✅）**、**98.7% 像素在 24 内（≥95% ✅）**；平均像素差 6.6/255（残差主要来自 UE Lumen/材质响应） | 需要更低平均差时做 LUT/统一光照 |
 | 指标回归 | `smoke-all -WithCompare -WithRoom` 读取 compare/room 指标，与 `demo/smoke-baseline.json` 比较（亮度差 +1、24 内 -1%、平均差 +1、hit=0 即失败）；`demo-hub` 同一套基线 | 已满足演示需求 |
-| UE 地形流式 | Unity 已按 128 m chunk 流式+LOD；UE 仍整块构建 | UE 分块/World Partition 化 |
+| UE 地形流式 | UE 已按 8×8 chunk 懒加载 + 三级 LOD（≤450/900/1400 m），超出视野隐藏；日志每 2 s 输出统计（[截图](docs/images/ue-terrain-streaming.png)） | 已满足演示需求 |
 | 预测范围 | 只预测位置/朝向；血量、冷却、命中仍等服务器帧 | 命中/受击也做预测 + 视觉反馈 |
 | 预测与分离 | 预测已包含 20 mm 整数分离；推挤 bot 实测 15 s `corr=3`（阈值 <5） | 已满足演示需求 |
 | 竞技场表现 | 有围栏、前冲、伤害数字、倒地，但围栏无碰撞、非正式场景 | 独立竞技场场景与正式特效 |
