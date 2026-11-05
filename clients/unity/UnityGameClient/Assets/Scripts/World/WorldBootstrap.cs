@@ -23,12 +23,16 @@ namespace AI003.World
         public bool IsReady => Data != null && Player != null;
 
         private Transform _model;
+        private float _modelBaseYaw;
 
-        private const string ModelYawKey = "AI003.ModelYaw";
+        // Extra yaw on top of the prefab's authored rotation. Default 0 because the
+        // prefab already carries the correction; hardcoding 180 here would override
+        // (and break) a prefab that was authored without a rotation.
+        private const string ModelYawKey = "AI003.ModelYawExtra";
 
         /// <summary>
-        /// F9 flips the visual model 180° and persists it (PlayerPrefs), so a machine
-        /// whose imported rig faces the other way can be corrected once at runtime.
+        /// F9 adds 180° to the model and persists the extra offset (PlayerPrefs),
+        /// for machines whose imported rig still faces the other way.
         /// </summary>
         private void Update()
         {
@@ -36,11 +40,12 @@ namespace AI003.World
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
             {
-                float yaw = _model.localEulerAngles.y + 180f;
-                _model.localRotation = Quaternion.Euler(0f, yaw, 0f);
-                PlayerPrefs.SetFloat(ModelYawKey, yaw);
+                float extra = PlayerPrefs.GetFloat(ModelYawKey, 0f) + 180f;
+                extra = Mathf.Repeat(extra, 360f);
+                PlayerPrefs.SetFloat(ModelYawKey, extra);
                 PlayerPrefs.Save();
-                Debug.Log($"[AI003] model yaw flipped to {yaw:F0} (saved to PlayerPrefs {ModelYawKey})");
+                _model.localRotation = Quaternion.Euler(0f, _modelBaseYaw + extra, 0f);
+                Debug.Log($"[AI003] model extra yaw {extra:F0} (base {_modelBaseYaw:F0}, saved {ModelYawKey})");
             }
         }
 
@@ -202,17 +207,20 @@ namespace AI003.World
             GameObject model = Instantiate(prefab, playerObject.transform);
             model.name = "CharacterModel";
             model.transform.localPosition = Vector3.zero;
-            // The prefab already carries the avatar, material and 180-degree facing;
-            // keep the visual scale in one place (3.96 m model -> 1.8 m character).
-            float modelYaw = PlayerPrefs.GetFloat(ModelYawKey, 180f);
+
+            // Keep the rotation authored in the prefab and add an optional extra
+            // offset (PlayerPrefs / env). Overwriting the authored rotation with a
+            // hardcoded 180° flips rigs whose prefab was not pre-rotated.
+            _modelBaseYaw = model.transform.localEulerAngles.y;
+            float extraYaw = PlayerPrefs.GetFloat(ModelYawKey, 0f);
             string overrideYaw = Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
             if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
             {
-                modelYaw = parsed;
+                extraYaw = parsed;
             }
-            model.transform.localRotation = Quaternion.Euler(0f, modelYaw, 0f);
+            model.transform.localRotation = Quaternion.Euler(0f, _modelBaseYaw + extraYaw, 0f);
             _model = model.transform;
-            Debug.Log($"[AI003] model yaw offset {modelYaw}");
+            Debug.Log($"[AI003] model yaw base {_modelBaseYaw:F0} + extra {extraYaw:F0}");
             model.transform.localScale = Vector3.one * 0.45f;
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())

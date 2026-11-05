@@ -119,6 +119,18 @@ try {
     Write-Host ("==> room {0} has {1} fighters, letting the HUD settle" -f $room.id, $room.players) -ForegroundColor Cyan
     Start-Sleep -Seconds $Seconds
 
+    # Wait until the bot actually engages, otherwise short runs capture an idle
+    # frame and the attack/hit assertions flap.
+    $combatDeadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $combatDeadline) {
+        try {
+            $probe = Get-Demo
+            if ([int64]$probe.stats.attackEvents -gt [int64]$demoBefore.stats.attackEvents) { break }
+        }
+        catch { }
+        Start-Sleep -Milliseconds 500
+    }
+
     # --- wait for the UE screenshot (rendered by the game itself) ----------
     Write-Host '==> waiting for UE room screenshot' -ForegroundColor Cyan
     $ueDeadline = (Get-Date).AddSeconds(150)

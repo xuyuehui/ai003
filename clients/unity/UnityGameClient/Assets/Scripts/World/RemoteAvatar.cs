@@ -17,6 +17,23 @@ namespace AI003.World
         public Animator Animator { get; private set; }
         public Renderer Renderer { get; private set; }
 
+        private const string ModelYawKey = "AI003.ModelYawExtra";
+
+        /// <summary>Extra model yaw shared with the local player (PlayerPrefs / env).</summary>
+        public static float ExtraYaw
+        {
+            get
+            {
+                float extra = PlayerPrefs.GetFloat(ModelYawKey, 0f);
+                string overrideYaw = System.Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
+                if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
+                {
+                    extra = parsed;
+                }
+                return extra;
+            }
+        }
+
         private void Awake()
         {
             Animator = GetComponent<Animator>();
@@ -38,7 +55,8 @@ namespace AI003.World
             GameObject model = Instantiate(prefab, wrapper.transform);
             model.name = "Model";
             model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            float baseYaw = model.transform.localEulerAngles.y;
+            model.transform.localRotation = Quaternion.Euler(0f, baseYaw + ExtraYaw, 0f);
             model.transform.localScale = Vector3.one * 0.45f;
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())
