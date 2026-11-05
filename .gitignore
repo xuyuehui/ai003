@@ -18,3 +18,7 @@ desktop.ini
 artifacts/
 .tmp/
 *.log
+
+# Entities SubScene import cache (generated)
+clients/unity/UnityGameClient/Assets/SceneDependencyCache/
+clients/unity/UnityGameClient/Assets/SceneDependencyCache.meta
