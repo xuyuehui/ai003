@@ -29,8 +29,9 @@
 已知限制：
 - **批处理**（`-batchmode -executeMethod`）不会触发烘焙产物；需要在交互式编辑器里
   完成一次 Open/Close（或菜单）
-- **规模**：目前只验证了 2×2（4 chunk）。扩到 16/64 chunk 时出现过块错位与缓存未刷新
-  （mesh 索引/烘焙缓存），暂未纳入演示；后续可按 SubScene 拆分为多块分别烘焙
+- **规模**：目前只验证了 2×2（4 chunk）。扩到 16/64 chunk 时烘焙实体渲染出错
+  （块错位/黑色撕裂），2×2 正常，判断与自定义地形 shader 在多实例下的
+  DOTS instancing 读取有关；需要改成真正 DOTS 兼容的 shader（或 URP Lit + 顶点色方案）
 - 烘焙产物在 `Assets/SceneDependencyCache`，属于本机生成缓存（已 gitignore）
 
 ## 运行时批量实体（仍不稳定）

@@ -60,3 +60,7 @@ crashlytics-build.properties
 
 # Editor screenshots / captured frames
 Assets/Screenshots/
+
+# Entities SubScene bake cache (generated)
+Assets/SceneDependencyCache/
+Assets/SceneDependencyCache.meta
