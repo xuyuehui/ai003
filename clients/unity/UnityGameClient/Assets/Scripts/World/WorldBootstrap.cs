@@ -24,15 +24,23 @@ namespace AI003.World
 
         private Transform _model;
 
-        /// <summary>Debug: F9 flips the visual model 180° to diagnose facing issues.</summary>
+        private const string ModelYawKey = "AI003.ModelYaw";
+
+        /// <summary>
+        /// F9 flips the visual model 180° and persists it (PlayerPrefs), so a machine
+        /// whose imported rig faces the other way can be corrected once at runtime.
+        /// </summary>
         private void Update()
         {
             if (_model == null) return;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
             {
-                _model.localRotation = Quaternion.Euler(0f, _model.localEulerAngles.y + 180f, 0f);
-                Debug.Log($"[AI003] model yaw flipped to {_model.localEulerAngles.y:F0}");
+                float yaw = _model.localEulerAngles.y + 180f;
+                _model.localRotation = Quaternion.Euler(0f, yaw, 0f);
+                PlayerPrefs.SetFloat(ModelYawKey, yaw);
+                PlayerPrefs.Save();
+                Debug.Log($"[AI003] model yaw flipped to {yaw:F0} (saved to PlayerPrefs {ModelYawKey})");
             }
         }
 
@@ -196,7 +204,7 @@ namespace AI003.World
             model.transform.localPosition = Vector3.zero;
             // The prefab already carries the avatar, material and 180-degree facing;
             // keep the visual scale in one place (3.96 m model -> 1.8 m character).
-            float modelYaw = 180f;
+            float modelYaw = PlayerPrefs.GetFloat(ModelYawKey, 180f);
             string overrideYaw = Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
             if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
             {
