@@ -579,7 +579,19 @@ namespace AI003.Net
 
             Vector3 forward = Vector3.forward;
             Vector3 right = Vector3.right;
-            if (_roomCamera == null) _roomCamera = Camera.main;
+            if (_roomCamera == null)
+            {
+                // Do not rely on the MainCamera tag alone: if the tag is missing the
+                // mapping silently falls back to world axes (W = +Z), which with the
+                // default south-facing camera looks like inverted controls.
+                OrbitCamera rig = FindFirstObjectByType<OrbitCamera>();
+                if (rig != null) _roomCamera = rig.GetComponent<Camera>();
+                if (_roomCamera == null) _roomCamera = Camera.main;
+                if (_roomCamera == null)
+                {
+                    Debug.LogWarning("[AI003][ROOM] no camera found; room input falls back to world axes");
+                }
+            }
             if (_roomCamera != null)
             {
                 forward = Vector3.ProjectOnPlane(_roomCamera.transform.forward, Vector3.up).normalized;
