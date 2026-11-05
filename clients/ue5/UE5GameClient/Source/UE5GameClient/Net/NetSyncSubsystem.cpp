@@ -432,7 +432,7 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 		{
 			NextHudAt = Now + 0.25;
 			GEngine->AddOnScreenDebugMessage(1, 0.3f, FColor::White,
-				FString::Printf(TEXT("%s   hp %d/%d   tick %d / pred %d   fighters %d   corr %d   [WASD move, Space attack]"),
+				FString::Printf(TEXT("%s   hp %d/%d   tick %d / pred %d   fighters %d   corr %d   [WASD camera-relative, Space attack]"),
 					*RoomId, RoomHP, RoomMaxHP, RoomTick, PredictedTick, RoomFighters, Corrections));
 		}
 	}
@@ -506,10 +506,37 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 	{
 		if (APlayerController* PC = Cast<APlayerController>(Character->GetController()))
 		{
-			if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left)) Command.DX -= 1;
-			if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) Command.DX += 1;
-			if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up)) Command.DZ += 1;
-			if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down)) Command.DZ -= 1;
+			float InputX = 0.f;
+			float InputY = 0.f;
+			if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left)) InputX -= 1.f;
+			if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) InputX += 1.f;
+			if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up)) InputY += 1.f;
+			if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down)) InputY -= 1.f;
+
+			if (!FMath::IsNearlyZero(InputX) || !FMath::IsNearlyZero(InputY))
+			{
+				// Camera-relative input, matching the Unity client: W always moves
+				// where the camera looks. Snapped to the eight protocol directions.
+				const FRotator CameraRotation = PC->PlayerCameraManager != nullptr
+					? PC->PlayerCameraManager->GetCameraRotation()
+					: PC->GetControlRotation();
+				const float YawRadians = FMath::DegreesToRadians(CameraRotation.Yaw);
+				const FVector2D Forward(FMath::Cos(YawRadians), FMath::Sin(YawRadians));
+				const FVector2D Right(-FMath::Sin(YawRadians), FMath::Cos(YawRadians));
+				const FVector2D Wish = Forward * InputY + Right * InputX;
+
+				if (!Wish.IsNearlyZero())
+				{
+					constexpr float SnapStep = PI / 4.f;
+					const float Angle = FMath::Atan2(Wish.Y, Wish.X);
+					const int32 Index = FMath::RoundToInt(Angle / SnapStep);
+					const float UnitX = FMath::Cos(Index * SnapStep);
+					const float UnitY = FMath::Sin(Index * SnapStep);
+					Command.DX = FMath::RoundToInt(FMath::Sign(UnitX));
+					// Protocol z = -UE Y.
+					Command.DZ = -FMath::RoundToInt(FMath::Sign(UnitY));
+				}
+			}
 			Command.bAttack = PC->IsInputKeyDown(EKeys::SpaceBar);
 		}
 	}

@@ -84,7 +84,8 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 ### 5.2 房间战斗（协议 v3）
 
 - `NetSyncSubsystem` 内实现房间：`-AI003Room` 开启，连上后自动 `room.enter`，
-  20 Hz 发 `room.input`（WASD/方向键 + 空格攻击）。
+  20 Hz 发 `room.input`（WASD/方向键 + 空格攻击；输入按**相机 yaw** 投影并吸附到 8 个协议方向，
+与 Unity 端一致，`W` 始终朝相机前方）。
 - 进房时 `DisableMovement()` 并把 `RoomCenter` 设成角色当前位置；之后按 `room.frame`
   直接 `SetActorLocation`（房间坐标 → `RoomCenter + (x,z)*100cm`）。
 - 远端用 `ARemotePlayer` 显示，动画由帧间位移推导（run/walk/idle）。
