@@ -52,7 +52,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | --- | --- | --- |
 | 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
-| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 3.1、平均像素差 11.3/255、89.3% ≤24 |
+| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 2.5、平均像素差 7.2/255、95.6% ≤24 |
 | 对照回归 | `smoke-all -WithCompare` | 亮度差 ≤8、像素差 ≤24 的占比 ≥80% 才算通过 |
 | 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
 | 客户端预测 | 看 HUD `pred / corr / 误差` | `pred = server + 3`，静止误差 0 |
@@ -105,9 +105,9 @@ windows-latest 上跑 Go 测试 + 无头演示（引擎不在 CI 内）。
 - 完整反作弊：服务器做边界/非法值/频率约束，但不做行为分析；
 - 正式美术与特效：UE 侧战斗反馈仍是 debug 图元。
 - 曝光/色调：UE 的 `AEM_Manual` 在该场景会压成黑帧，改用 Histogram + `min=max=0.8 EV`
-  锁定曝光；Unity 侧用 ACES tonemapping 卷。仍有细微色彩分级差异（平均像素差 11.5/255）。
-- **UE 世界镜像（待修）**：UE 用 `(x, z, y)` 把 Unity 坐标换到 UE，行列式为 −1，
-  属于反射而非旋转——两端相机位姿日志完全一致，但地形山脊左右相反。修复方向：
-  `(x, −z, y)`，同步修改地形 chunk 放置/绕序、`SpawnUE`、世界同步/房间坐标转换与朝向。
+  锁定曝光；Unity 侧用 ACES tonemapping 卷。仍有细微色彩分级差异（平均像素差 7.2/255）。
+- UE 坐标映射：Unity `(x, y, z)` → UE `(x, −z, y)`（`y` 是高度）。早期用 `(x, z, y)`，
+  行列式为 −1，是反射——地形会左右镜像；对照图的地形轮廓不一致才暴露出来。同步修正了
+  地形行序/法线、出生点、世界同步、房间坐标与朝向。
 
 这些取舍是为了让演示**可复现、可观测、可回归**，而不是把时间花在玩法内容上。

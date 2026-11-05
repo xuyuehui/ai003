@@ -194,11 +194,13 @@ void UNetSyncSubsystem::SendMove()
 	TSharedPtr<FJsonObject> Pos = MakeShared<FJsonObject>();
 	Pos->SetNumberField(TEXT("x"), FMath::RoundToDouble(Location.X / 100.0));
 	Pos->SetNumberField(TEXT("y"), FMath::RoundToDouble((Location.Z - CapsuleHalfHeightCm) / 100.0));
-	Pos->SetNumberField(TEXT("z"), FMath::RoundToDouble(Location.Y / 100.0));
+	// UE Y = -Unity z.
+	Pos->SetNumberField(TEXT("z"), FMath::RoundToDouble(-Location.Y / 100.0));
 
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetObjectField(TEXT("pos"), Pos);
-	Body->SetNumberField(TEXT("yaw"), FMath::RoundToDouble(Character->GetActorRotation().Yaw));
+	// UE yaw = Unity yaw - 90 (both are left-handed, yaw grows clockwise).
+	Body->SetNumberField(TEXT("yaw"), FMath::RoundToDouble(Character->GetActorRotation().Yaw + 90.0));
 	Body->SetNumberField(TEXT("speed"), FMath::RoundToDouble(Movement->Velocity.Size2D() / 100.0));
 	Body->SetBoolField(TEXT("grounded"), Movement->IsMovingOnGround());
 	Body->SetBoolField(TEXT("swimming"), false);
@@ -309,8 +311,8 @@ void UNetSyncSubsystem::ApplySnapshot(const TSharedPtr<FJsonObject>& Body)
 		FString Anim;
 		Player->TryGetStringField(TEXT("anim"), Anim);
 
-		const FVector Location(X * 100.0, Z * 100.0, Y * 100.0 + 96.0);
-		const FRotator Rotation(0.f, Yaw, 0.f);
+		const FVector Location(X * 100.0, -Z * 100.0, Y * 100.0 + 96.0);
+		const FRotator Rotation(0.f, Yaw - 90.0, 0.f);
 
 		TWeakObjectPtr<ARemotePlayer>& Slot = Remotes.FindOrAdd(Id);
 		ARemotePlayer* Remote = Slot.Get();
@@ -323,7 +325,7 @@ void UNetSyncSubsystem::ApplySnapshot(const TSharedPtr<FJsonObject>& Body)
 		}
 		if (Remote != nullptr)
 		{
-			Remote->ApplySnapshot(Location, static_cast<float>(Yaw), Anim);
+			Remote->ApplySnapshot(Location, static_cast<float>(Yaw - 90.0), Anim);
 		}
 	}
 
@@ -597,9 +599,10 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 		Player->TryGetBoolField(TEXT("alive"), bAlive);
 
 		const FVector Target = RoomToWorld(X / 1000.0, Z / 1000.0);
-		const float Yaw = (FacingX == 0 && FacingZ == 0)
+		const float ProtocolYaw = (FacingX == 0 && FacingZ == 0)
 			? 0.f
 			: FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(FacingX), static_cast<float>(FacingZ)));
+		const float Yaw = ProtocolYaw - 90.f;
 
 		if (Id == PlayerId)
 		{
@@ -717,7 +720,7 @@ void UNetSyncSubsystem::HandleRoomEvents(const TSharedPtr<FJsonObject>& Body)
 
 FVector UNetSyncSubsystem::RoomToWorld(double XMeters, double ZMeters) const
 {
-	return RoomCenter + FVector(XMeters * 100.0, ZMeters * 100.0, 0.0);
+	return RoomCenter + FVector(XMeters * 100.0, -ZMeters * 100.0, 0.0);
 }
 
 FString UNetSyncSubsystem::LoadOrCreateClientId()
@@ -773,15 +776,16 @@ void UNetSyncSubsystem::StepPrediction(const FRoomCommand& Command)
 	}
 
 	const float Step = (Command.DX != 0 && Command.DZ != 0) ? RoomDiagCm : RoomSpeedCm;
-	// Protocol x maps to UE X, protocol z maps to UE Y.
+	// Protocol x maps to UE X, protocol z maps to UE Y with a sign flip.
 	PredictedPos.X += Command.DX * Step;
-	PredictedPos.Y += Command.DZ * Step;
+	PredictedPos.Y -= Command.DZ * Step;
 
 	const float Half = 2000.f;
 	PredictedPos.X = FMath::Clamp(PredictedPos.X, RoomCenter.X - Half, RoomCenter.X + Half);
 	PredictedPos.Y = FMath::Clamp(PredictedPos.Y, RoomCenter.Y - Half, RoomCenter.Y + Half);
 
-	RoomYaw = FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(Command.DX), static_cast<float>(Command.DZ)));
+	// UE actor yaw for a protocol direction (DX, DZ): forward = (DX, -DZ).
+	RoomYaw = FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(-Command.DZ), static_cast<float>(Command.DX)));
 }
 
 void UNetSyncSubsystem::Reconcile(const FVector& ServerPosition, int32 InServerTick)

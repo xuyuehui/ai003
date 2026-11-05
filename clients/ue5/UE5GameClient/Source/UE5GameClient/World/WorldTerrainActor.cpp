@@ -67,7 +67,9 @@ void AWorldTerrainActor::Build(const FAI003WorldData& Data)
 
 			for (int32 LocalY = 0; LocalY < VertsPerAxis; ++LocalY)
 			{
-				const int32 Gy = BaseY + LocalY;
+				// UE Y = -Unity z: rows run backwards inside the chunk so the
+				// landscape is not mirrored while triangle winding stays intact.
+				const int32 Gy = BaseY + (CellsPerChunk - LocalY);
 				for (int32 LocalX = 0; LocalX < VertsPerAxis; ++LocalX)
 				{
 					const int32 Gx = BaseX + LocalX;
@@ -120,7 +122,7 @@ void AWorldTerrainActor::Build(const FAI003WorldData& Data)
 			Mesh->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
 			Mesh->SetRelativeLocation(FVector(
 				(-Half + ChunkX * CellsPerChunk * Cell) * MetresToCentimetres,
-				(-Half + ChunkY * CellsPerChunk * Cell) * MetresToCentimetres,
+				(Half - (ChunkY * CellsPerChunk + CellsPerChunk) * Cell) * MetresToCentimetres,
 				0.f));
 
 			Mesh->bUseComplexAsSimpleCollision = true;

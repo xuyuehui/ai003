@@ -31,6 +31,10 @@ struct FAI003WorldData
 	/** Up-facing normal from central differences (UE axes: X, Y horizontal, Z up). */
 	FVector NormalAt(int32 Ix, int32 Iy) const;
 
-	/** Spawn point converted to Unreal coordinates, in metres. */
-	FVector SpawnUE() const { return FVector(SpawnMeters.X, SpawnMeters.Z, SpawnMeters.Y); }
+	/**
+	 * Spawn point converted to Unreal coordinates, in metres.
+	 * Unity (x, y, z) -> UE (x, -z, y): negating z keeps the basis right-handed,
+	 * otherwise the shared world would appear mirrored between the two engines.
+	 */
+	FVector SpawnUE() const { return FVector(SpawnMeters.X, -SpawnMeters.Z, SpawnMeters.Y); }
 };

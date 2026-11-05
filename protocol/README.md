@@ -69,10 +69,11 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 | 引擎 | 位置 | 朝向 |
 | --- | --- | --- |
 | Unity | 直接使用 `transform.position`（本来就在脚底） | `transform.eulerAngles.y` |
-| Unreal | `(x, y, z) * 100` → `(X, Z, Y)`，再给胶囊中心 `+96 cm` | `ActorRotation.Yaw` 直接用 |
+| Unreal | `(x, y, z) * 100` → `(X, −Z, Y)`，再给胶囊中心 `+96 cm` | `ActorRotation.Yaw + 90` |
 
-> UE 的 `X` 对应协议的 `z`、`Y` 对应 `x`；由于两边 yaw 都绕自身 up 轴、0 指向“北/前”，
-> 数值可以直接透传。
+> UE 的 `X` 对应协议的 `x`、`Y` 对应 `−z`、`Z` 对应 `y`（高度）。若写成 `(x, z, y)`，
+> 行列式为 −1，是**反射**，两个引擎的世界会互为镜像。UE yaw 与协议 yaw 相差 90°，
+> 收发时分别 `+90` / `−90`。
 
 ## 报文
 

@@ -145,6 +145,7 @@ FVector FAI003WorldData::NormalAt(int32 Ix, int32 Iy) const
 	const float Dhdx = (Heights[Iy * Resolution + X1] - Heights[Iy * Resolution + X0]) / ((X1 - X0) * CellSize);
 	const float Dhdy = (Heights[Y1 * Resolution + Ix] - Heights[Y0 * Resolution + Ix]) / ((Y1 - Y0) * CellSize);
 
-	// UE: X and Y are the horizontal axes, Z is up.
-	return FVector(-Dhdx, -Dhdy, 1.f).GetSafeNormal();
+	// UE: X and Y are the horizontal axes, Z is up. UE Y = -Unity z, so the
+	// gradient along Y flips sign compared with the heightmap rows.
+	return FVector(-Dhdx, Dhdy, 1.f).GetSafeNormal();
 }

@@ -94,7 +94,8 @@ void AWorldGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 		return;
 	}
 
-	const FRotator Rotation(0.f, 180.f, 0.f);
+	// Unity spawn yaw 0 faces +Z (north); UE forward -Y is yaw 270.
+	const FRotator Rotation(0.f, 270.f, 0.f);
 	RestartPlayerAtTransform(NewPlayer, FTransform(Rotation, SpawnLocation));
 
 	NewPlayer->SetInputMode(FInputModeGameOnly());
@@ -196,22 +197,23 @@ void AWorldGameMode::BeginDemoShot()
 	if (AWorldCharacter* Character = Cast<AWorldCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
 	{
 		Character->SetActorLocation(FeetCenter);
-		Character->SetActorRotation(FRotator(0.f, 270.f, 0.f));
+		// Unity avatar faces -Z (towards the camera at -Z); UE forward = -Y is yaw 90.
+		Character->SetActorRotation(FRotator(0.f, 90.f, 0.f));
 	}
 
-	// Front-light the character for the comparison: the demo camera is on -Y,
-	// so the sun is rotated to shine from that side.
+	// Front-light the character for the comparison: the demo camera is on +Y
+	// (UE Y = -Unity z), so the sun shines from that side.
 	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
 	{
 		ADirectionalLight* Light = *It;
 		if (Light != nullptr)
 		{
-			Light->SetActorRotation(FRotator(-46.f, 90.f, 0.f));
+			Light->SetActorRotation(FRotator(-46.f, 270.f, 0.f));
 			break;
 		}
 	}
 
-	const FVector CameraLocation = Ground + FVector(0.f, -600.f, 320.f);
+	const FVector CameraLocation = Ground + FVector(0.f, 600.f, 320.f);
 	const FVector LookAt = Ground + FVector(0.f, 0.f, 120.f);
 	const FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
 
