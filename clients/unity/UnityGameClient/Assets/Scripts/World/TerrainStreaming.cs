@@ -277,7 +277,7 @@ namespace AI003.World
 
             var array = new RenderMeshArray(
                 new[] { _terrain.TerrainMaterial }, new[] { chunk.Mesh });
-            var description = new RenderMeshDescription(ShadowCastingMode.Off, true);
+            var description = new RenderMeshDescription(ShadowCastingMode.Off, false);
 
             if (_entities[index] == Entity.Null)
             {

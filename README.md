@@ -113,8 +113,10 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
 - **Entities Graphics（保留为可选路径）**：`com.unity.entities.graphics@6.6.0`
   - URP Lit + 运行时实体可渲染（[探针](docs/images/ecs-graphics-probe.png)）
-  - 自定义地形 shader：**单个**手动创建的实体可以正常渲染（绿色 chunk），但
-    `TerrainStreaming` 批量创建/更新同一批实体时不绘制（[证据](docs/images/ecs-terrain-runtime-entities.png)）；
+  - 自定义地形 shader：手动创建的实体可以正常渲染——1 个、16 个、甚至 **256 个**
+    （[256 个实体](docs/images/ecs-terrain-manual-256.png)）；但用同一套代码在
+    `TerrainStreaming` 的启动帧批量创建时**不绘制**（[灰色证据](docs/images/ecs-terrain-runtime-entities.png)），
+    组件/包围盒/材质/网格检查均一致，疑似 6.6 运行时批量注册的初始化竞态；
     早期未开 instancing 时为洋红/灰色（[洋红](docs/images/ecs-terrain-shader-fail.png)、[灰色](docs/images/ecs-terrain-ecs-gray.png)）
   - 结论：运行时批量实体 + 自定义 shader 在 6.6 下不稳定；默认仍用 GameObject 渲染，
     ECS 地形路径保留为 `AI003_TERRAIN_ECS=1` 的实验开关。骨骼角色仍需 DOTS skinning
