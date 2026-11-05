@@ -130,6 +130,7 @@ func NewWithWorld(logger *slog.Logger, worldDir string) *Server {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /demo", s.handleDemo)
 	s.mux.HandleFunc("GET /world", s.handleWorld)
+	s.mux.HandleFunc("GET /dashboard", s.handleDashboard)
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	return s
 }

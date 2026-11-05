@@ -91,6 +91,7 @@ UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地
 ```powershell
 # 全量验证（含 PlayMode、画面对照、同房演示；约 15–20 分钟）
 .\scripts\smoke-all.cmd -WithCompare -WithRoom
+.\scripts\demo-hub.cmd                                  # 一键出图 + 报告 + 基线对比
 ```
 
 ## Unity 客户端：ECS 架构
@@ -423,7 +424,8 @@ ue5-world  PASS
 | `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成；默认断言 fighters=2、tick 前进、attack>0、hit>0、截图非空 |
 | `scripts/build-world.ps1` | 重新生成指定尺寸世界（2/4/8 km）并同步到 Unity StreamingAssets 与 UE WorldData |
 | `scripts/check-ue-input.ps1` | 用 `-AI003InputProbe` 自动验证 UE 相机相对输入映射（8 方向查表） |
-| `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示 |
+| `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示；`-UpdateBaseline` 更新 `demo/smoke-baseline.json` |
+| `scripts/demo-hub.ps1` | 一条命令跑 scenario + compare + room，汇总生成 `artifacts/demo/report.md` 与 `report.json`（含基线对比） |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
 Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
@@ -447,7 +449,7 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | 离线冻结 | 离线玩家不可攻击，但**复活/冷却计时继续推进**；宽限 30 s 后移除 | 已满足演示需求 |
 | 世界同步身份 | 大世界的 `join` 仍以会话 id 记玩家，重连会新建 | 世界玩家也改用 `clientId` 持久身份 |
 | 双端画面统一 | 对齐太阳方位/天空/雾后：亮度差 **1.8（≤5 ✅）**、**98.7% 像素在 24 内（≥95% ✅）**；平均像素差 6.6/255（残差主要来自 UE Lumen/材质响应） | 需要更低平均差时做 LUT/统一光照 |
-| 指标回归 | `/demo`、`/world` 与 `demo-scenario` 可手工跑 | 纳入 `smoke-all`/CI，保存基线并比较 |
+| 指标回归 | `smoke-all -WithCompare -WithRoom` 读取 compare/room 指标，与 `demo/smoke-baseline.json` 比较（亮度差 +1、24 内 -1%、平均差 +1、hit=0 即失败）；`demo-hub` 同一套基线 | 已满足演示需求 |
 | UE 地形流式 | Unity 已按 128 m chunk 流式+LOD；UE 仍整块构建 | UE 分块/World Partition 化 |
 | 预测范围 | 只预测位置/朝向；血量、冷却、命中仍等服务器帧 | 命中/受击也做预测 + 视觉反馈 |
 | 预测与分离 | 预测已包含 20 mm 整数分离；推挤 bot 实测 15 s `corr=3`（阈值 <5） | 已满足演示需求 |

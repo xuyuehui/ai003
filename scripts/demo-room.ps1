@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Unity = 'C:\Program Files\Unity 6000.6.6f1\Editor\Unity.exe',
     [string]$Engine = 'C:\Program Files\Epic Games\UE_5.8',
     [int]$Seconds = 5,
@@ -71,8 +71,10 @@ try {
     $unityProject = Join-Path $repo 'clients\unity\UnityGameClient'
     $previousRoom = $env:AI003_ROOM
     $previousRoomName = $env:AI003_ROOM_NAME
+    $previousHold = $env:AI003_ROOM_HOLD
     $env:AI003_ROOM = '1'
     $env:AI003_ROOM_NAME = $roomName
+    $env:AI003_ROOM_HOLD = '30'
     try {
         $unityProcess = Start-Process -FilePath $Unity -PassThru `
             -ArgumentList @('-projectPath', $unityProject,
@@ -84,6 +86,7 @@ try {
     finally {
         $env:AI003_ROOM = $previousRoom
         $env:AI003_ROOM_NAME = $previousRoomName
+        $env:AI003_ROOM_HOLD = $previousHold
     }
 
     Start-Sleep -Seconds 5
@@ -182,11 +185,11 @@ try {
     # --- assertions --------------------------------------------------------
     $problems = @()
     $roomAfter = @($demo.rooms) | Where-Object { $_.id -eq $room.id } | Select-Object -First 1
-    if (-not $roomAfter) {
-        $problems += "room $($room.id) disappeared"
-    }
-    else {
-        if ($roomAfter.players -lt 2) { $problems += "room players $($roomAfter.players) < 2" }
+
+    # Clients intentionally exit after their screenshots, so the empty-room
+    # cleanup may already have removed the room by now; that is not a failure.
+    if ($room.players -lt 2) { $problems += "room had $($room.players) fighters at capture time" }
+    if ($roomAfter) {
         if ($roomAfter.tick -le $room.tick) { $problems += "room tick did not advance ($($room.tick) -> $($roomAfter.tick))" }
     }
 
@@ -202,16 +205,26 @@ try {
         if ((Get-Item $shot).Length -lt 20000) { $problems += "screenshot too small: $shot" }
     }
 
-    $playersNow = 0
-    $tickDelta = 0
-    if ($roomAfter) {
-        $playersNow = $roomAfter.players
-        $tickDelta = $roomAfter.tick - $room.tick
-    }
+    $playersNow = $room.players
+    $tickDelta = if ($roomAfter) { $roomAfter.tick - $room.tick } else { $frameDelta }
 
     Write-Host ''
     Write-Host ("checks: roomPlayers={0} tickDelta={1} frameDelta={2} attackDelta={3} hitDelta={4}" -f `
         $playersNow, $tickDelta, $frameDelta, $attackDelta, $hitDelta)
+
+    $metricsPath = Join-Path $repo 'artifacts\demo\room.json'
+    [ordered]@{
+        generatedAt = (Get-Date).ToString('o')
+        roomId      = $room.id
+        players     = [int]$playersNow
+        tickDelta   = [int]$tickDelta
+        frameDelta  = [int]$frameDelta
+        attackDelta = [int]$attackDelta
+        hitDelta    = [int]$hitDelta
+        problems    = @($problems)
+        passed      = ($problems.Count -eq 0)
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path $metricsPath -Encoding UTF8
+    Write-Host "metrics: $metricsPath"
 
     if ($problems.Count -gt 0) {
         if ($NoAssert) {

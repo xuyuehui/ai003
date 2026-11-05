@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -68,5 +69,28 @@ func TestWorldEndpoint(t *testing.T) {
 	}
 	if len(body.World.WorldFiles) != 1 || body.World.WorldFiles[0].Bytes != 16 {
 		t.Fatalf("worldFiles = %+v", body.World.WorldFiles)
+	}
+}
+
+func TestDashboardEndpoint(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/dashboard")
+	if err != nil {
+		t.Fatalf("GET /dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !bytes.Contains(body, []byte("AI003")) || !bytes.Contains(body, []byte("/demo")) {
+		t.Fatalf("dashboard body missing expected markers")
 	}
 }

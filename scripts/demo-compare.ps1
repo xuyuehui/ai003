@@ -185,6 +185,23 @@ if ((Test-Path $unityShot) -and (Test-Path $ueShot)) {
     if ($within24 -lt $MinWithin24) {
         $failed += ("within-24 {0:N1}% < {1:N1}%" -f $within24, $MinWithin24)
     }
+
+    $metricsPath = Join-Path $repo 'artifacts\demo\compare.json'
+    [ordered]@{
+        generatedAt        = (Get-Date).ToString('o')
+        unityBrightness    = [Math]::Round($unityMean, 2)
+        ueBrightness       = [Math]::Round($ueMean, 2)
+        brightnessDelta    = [Math]::Round($brightnessDelta, 2)
+        meanDiff           = [Math]::Round(($diffSum / $samples), 2)
+        maxDiff            = [int]$maxDiff
+        within24           = [Math]::Round($within24, 2)
+        pixels             = [int]$samples
+        maxBrightnessDelta = $MaxBrightnessDelta
+        minWithin24        = $MinWithin24
+        passed             = ($failed.Count -eq 0)
+    } | ConvertTo-Json | Set-Content -Path $metricsPath -Encoding UTF8
+    Write-Host "metrics: $metricsPath"
+
     if ($failed.Count -gt 0) {
         Write-Host ("compare thresholds failed: " + ($failed -join '; ')) -ForegroundColor Red
         exit 1

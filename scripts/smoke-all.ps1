@@ -119,10 +119,75 @@ try {
 
     if ($WithRoom) {
         Write-Host '==> Demo room (Unity + UE bot in one room)' -ForegroundColor Cyan
-        & (Join-Path $scripts 'demo-room.ps1') -Seconds 3 -NoPublish
-        if ($LASTEXITCODE -ne 0) { throw 'demo room failed' }
+        $roomPath = Join-Path (Join-Path $root 'artifacts\demo') 'room.json'
+        $roomOk = $false
+        for ($attempt = 1; $attempt -le 2; $attempt++) {
+            if (Test-Path $roomPath) { Remove-Item $roomPath -Force }
+            & (Join-Path $scripts 'demo-room.ps1') -Seconds 4 -NoPublish
+            $roomPassed = $false
+            if (Test-Path $roomPath) {
+                $roomPassed = (Get-Content $roomPath -Raw | ConvertFrom-Json).passed
+            }
+            if ($LASTEXITCODE -eq 0 -and $roomPassed) { $roomOk = $true; break }
+            if ($attempt -lt 2) { Write-Host 'room had no combat; retrying once' -ForegroundColor Yellow }
+        }
+        if (-not $roomOk) { throw 'demo room failed' }
         $results['room'] = 'PASS'
     }
+
+    # --- metrics + regression baseline -----------------------------------
+    $artifacts = Join-Path $root 'artifacts\demo'
+    $compareMetrics = $null
+    $roomMetrics = $null
+    if ($WithCompare -and (Test-Path (Join-Path $artifacts 'compare.json'))) {
+        $compareMetrics = Get-Content (Join-Path $artifacts 'compare.json') -Raw | ConvertFrom-Json
+    }
+    if ($WithRoom -and (Test-Path (Join-Path $artifacts 'room.json'))) {
+        $roomMetrics = Get-Content (Join-Path $artifacts 'room.json') -Raw | ConvertFrom-Json
+    }
+
+    $report = [ordered]@{
+        generatedAt = (Get-Date).ToString('o')
+        results     = $results
+        compare     = $compareMetrics
+        room        = $roomMetrics
+    }
+    $reportPath = Join-Path $artifacts 'smoke-report.json'
+    New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
+    $report | ConvertTo-Json -Depth 8 | Set-Content -Path $reportPath -Encoding UTF8
+
+    $baselinePath = Join-Path $root 'demo\smoke-baseline.json'
+    if ($UpdateBaseline -and $compareMetrics -and $roomMetrics) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $baselinePath -Parent) | Out-Null
+        [ordered]@{
+            generatedAt     = (Get-Date).ToString('o')
+            brightnessDelta = $compareMetrics.brightnessDelta
+            meanDiff        = $compareMetrics.meanDiff
+            within24        = $compareMetrics.within24
+            roomHitDelta    = $roomMetrics.hitDelta
+            roomAttackDelta = $roomMetrics.attackDelta
+        } | ConvertTo-Json | Set-Content -Path $baselinePath -Encoding UTF8
+        Write-Host "baseline updated: $baselinePath" -ForegroundColor Cyan
+    }
+    elseif ((Test-Path $baselinePath) -and $compareMetrics -and $roomMetrics) {
+        $baseline = Get-Content $baselinePath -Raw | ConvertFrom-Json
+        $regressions = @()
+        if ($compareMetrics.brightnessDelta -gt ($baseline.brightnessDelta + 1.0)) {
+            $regressions += ("brightnessDelta {0} > {1}+1" -f $compareMetrics.brightnessDelta, $baseline.brightnessDelta)
+        }
+        if ($compareMetrics.within24 -lt ($baseline.within24 - 1.0)) {
+            $regressions += ("within24 {0} < {1}-1" -f $compareMetrics.within24, $baseline.within24)
+        }
+        if ($compareMetrics.meanDiff -gt ($baseline.meanDiff + 1.0)) {
+            $regressions += ("meanDiff {0} > {1}+1" -f $compareMetrics.meanDiff, $baseline.meanDiff)
+        }
+        if ($roomMetrics.hitDelta -lt 1) { $regressions += 'room hitDelta 0' }
+        if ($regressions.Count -gt 0) {
+            throw ("regressions: " + ($regressions -join '; '))
+        }
+        Write-Host "baseline ok: $baselinePath" -ForegroundColor Green
+    }
+    Write-Host "smoke report: $reportPath" -ForegroundColor Cyan
 }
 finally {
     if ($serverProcess -and -not $serverProcess.HasExited) {

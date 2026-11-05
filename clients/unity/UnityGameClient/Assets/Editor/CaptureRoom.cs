@@ -21,6 +21,10 @@ namespace AI003.EditorTools
         private const double ReadySeconds = 2.5;
         private const double TimeoutSeconds = 120;
 
+        // Kept alive after the capture so the UE bot still has an online target
+        // and actually fights (demo-room sets AI003_ROOM_HOLD).
+        private static double HoldSeconds = 2.0;
+
         private static string _outputPath;
         private static double _playStartedAt;
         private static double _capturedAt;
@@ -40,6 +44,14 @@ namespace AI003.EditorTools
 
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
+
+            double hold = 0;
+            string holdText = System.Environment.GetEnvironmentVariable("AI003_ROOM_HOLD");
+            if (!string.IsNullOrEmpty(holdText))
+            {
+                double.TryParse(holdText, out hold);
+            }
+            if (hold > 0) HoldSeconds = hold;
 
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
@@ -81,7 +93,7 @@ namespace AI003.EditorTools
                     Debug.Log($"[AI003][ROOM-SHOT] screenshot requested ({room.RoomId}, {room.Players} fighters)");
                 }
 
-                if (_captured && Time.realtimeSinceStartupAsDouble - _capturedAt > 2.0)
+                if (_captured && Time.realtimeSinceStartupAsDouble - _capturedAt > HoldSeconds)
                 {
                     Finish(0);
                 }
