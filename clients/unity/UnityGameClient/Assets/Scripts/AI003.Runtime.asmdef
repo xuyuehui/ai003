@@ -3,6 +3,10 @@
     "rootNamespace": "AI003",
     "references": [
         "AI003.Ecs",
+        "Unity.Entities",
+        "Unity.Transforms",
+        "Unity.Mathematics",
+        "Unity.Collections",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

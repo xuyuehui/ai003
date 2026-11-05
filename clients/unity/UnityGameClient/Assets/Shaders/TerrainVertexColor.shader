@@ -26,6 +26,7 @@ Shader "AI003/TerrainVertexColor"
             #pragma multi_compile _ _SHADOWS_SOFT
             #pragma multi_compile_fog
 
+            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
@@ -86,6 +87,7 @@ Shader "AI003/TerrainVertexColor"
             #pragma vertex vert
             #pragma fragment frag
 
+            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -116,6 +118,7 @@ Shader "AI003/TerrainVertexColor"
             #pragma vertex vert
             #pragma fragment frag
 
+            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct Attributes

@@ -1,87 +1,71 @@
+using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 
 namespace AI003.Ecs
 {
     /// <summary>
-    /// Steps the local fighter at 20 Hz in integer millimetres (same rules as the
-    /// Go server), keeps a short history for rollback and emits one input per tick
-    /// for the network layer to send.
+    /// Burst job that steps the local fighter at 20 Hz in integer millimetres,
+    /// keeps history and reconciles against the newest server snapshot.
     /// </summary>
-    [UpdateInGroup(typeof(SimulationSystemGroup))]
-    public partial struct LocalPredictionSystem : ISystem
+    [BurstCompile]
+    [WithAll(typeof(LocalFighterTag))]
+    public partial struct LocalPredictionJob : IJobEntity
     {
         private const float StepSeconds = 0.05f;      // 20 Hz
-        private const int MaxTicksAhead = 8;          // catch-up cap per frame
+        private const int MaxTicksAhead = 8;
         private const int HistoryCapacity = 64;
         private const int ReconcileThresholdMm = 50;
 
-        public void OnCreate(ref SystemState state)
-        {
-            state.RequireForUpdate<PredictionState>();
-        }
+        public float DeltaTime;
 
-        public void OnUpdate(ref SystemState state)
+        public void Execute(
+            ref PredictionState prediction,
+            in PredictionInput input,
+            ref ServerSnapshot snapshot,
+            ref FighterState fighter,
+            DynamicBuffer<PredictionStep> steps,
+            DynamicBuffer<PredictionHistoryElement> history)
         {
-            float deltaTime = math.min(SystemAPI.Time.DeltaTime, 0.2f);
-            if (deltaTime <= 0f) return;
-
-            foreach (var (prediction, input, snapshot, fighter, steps, history) in SystemAPI.Query<
-                         RefRW<PredictionState>,
-                         RefRO<PredictionInput>,
-                         RefRW<ServerSnapshot>,
-                         RefRW<FighterState>,
-                         DynamicBuffer<PredictionStep>,
-                         DynamicBuffer<PredictionHistoryElement>>()
-                         .WithAll<LocalFighterTag>())
+            if (snapshot.Pending)
             {
-                ref PredictionState predictionState = ref prediction.ValueRW;
-                ref ServerSnapshot serverSnapshot = ref snapshot.ValueRW;
-
-                if (serverSnapshot.Pending)
-                {
-                    ApplySnapshot(ref predictionState, serverSnapshot, steps, history);
-                    serverSnapshot.Pending = false;
-                }
-
-                predictionState.Accumulator = math.min(predictionState.Accumulator + deltaTime, 0.5f);
-                int targetTick = serverSnapshot.Tick > 0 ? serverSnapshot.Tick + 3 : predictionState.Tick + 1;
-                int stepped = 0;
-
-                while (predictionState.Accumulator >= StepSeconds
-                       && predictionState.Tick < targetTick
-                       && stepped < MaxTicksAhead)
-                {
-                    predictionState.Accumulator -= StepSeconds;
-                    predictionState.Tick++;
-                    Step(ref predictionState, input.ValueRO.DX, input.ValueRO.DZ);
-                    steps.Add(new PredictionStep
-                    {
-                        Tick = predictionState.Tick,
-                        DX = input.ValueRO.DX,
-                        DZ = input.ValueRO.DZ,
-                        Attack = input.ValueRO.Attack
-                    });
-                    history.Add(new PredictionHistoryElement
-                    {
-                        Tick = predictionState.Tick,
-                        PositionMm = predictionState.PositionMm
-                    });
-                    stepped++;
-                }
-
-                Prune(steps, history, serverSnapshot.Tick);
-
-                // Drive the presentation entity from the predicted state.
-                FighterState fighterState = fighter.ValueRW;
-                fighterState.Position.x = predictionState.PositionMm.x / 1000f;
-                fighterState.Position.z = predictionState.PositionMm.y / 1000f;
-                fighterState.Yaw = math.degrees(math.atan2(predictionState.FacingX, predictionState.FacingZ));
-                fighter.ValueRW = fighterState;
+                ApplySnapshot(ref prediction, snapshot, steps, history);
+                snapshot.Pending = false;
             }
+
+            prediction.Accumulator = math.min(prediction.Accumulator + DeltaTime, 0.5f);
+            int targetTick = snapshot.Tick > 0 ? snapshot.Tick + 3 : prediction.Tick + 1;
+            int stepped = 0;
+
+            while (prediction.Accumulator >= StepSeconds
+                   && prediction.Tick < targetTick
+                   && stepped < MaxTicksAhead)
+            {
+                prediction.Accumulator -= StepSeconds;
+                prediction.Tick++;
+                Step(ref prediction, input.DX, input.DZ);
+                steps.Add(new PredictionStep
+                {
+                    Tick = prediction.Tick,
+                    DX = input.DX,
+                    DZ = input.DZ,
+                    Attack = input.Attack
+                });
+                history.Add(new PredictionHistoryElement
+                {
+                    Tick = prediction.Tick,
+                    PositionMm = prediction.PositionMm
+                });
+                stepped++;
+            }
+
+            Prune(steps, history, snapshot.Tick);
+
+            fighter.Position.x = prediction.PositionMm.x / 1000f;
+            fighter.Position.z = prediction.PositionMm.y / 1000f;
+            fighter.Yaw = math.degrees(math.atan2(prediction.FacingX, prediction.FacingZ));
         }
 
-        /// <summary>Snaps to the server when off by more than the threshold, then replays pending input.</summary>
         private static void ApplySnapshot(ref PredictionState prediction, in ServerSnapshot snapshot,
             DynamicBuffer<PredictionStep> steps, DynamicBuffer<PredictionHistoryElement> history)
         {
@@ -103,7 +87,6 @@ namespace AI003.Ecs
             prediction.Tick = snapshot.Tick;
             prediction.Accumulator = 0f;
 
-            // Replay inputs that were predicted after the snapshot tick.
             for (int i = 0; i < steps.Length; i++)
             {
                 if (steps[i].Tick <= snapshot.Tick) continue;
@@ -111,7 +94,6 @@ namespace AI003.Ecs
                 prediction.Tick = steps[i].Tick;
             }
 
-            // Rebuild history around the reconciled state.
             history.Clear();
             history.Add(new PredictionHistoryElement
             {
@@ -147,6 +129,24 @@ namespace AI003.Ecs
             }
 
             while (history.Length > HistoryCapacity) history.RemoveAt(0);
+        }
+    }
+
+    [BurstCompile]
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [UpdateBefore(typeof(FighterStateUpdateSystem))]
+    public partial struct LocalPredictionSystem : ISystem
+    {
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            float deltaTime = math.min(SystemAPI.Time.DeltaTime, 0.2f);
+            if (deltaTime <= 0f) return;
+
+            state.Dependency = new LocalPredictionJob
+            {
+                DeltaTime = deltaTime
+            }.Schedule(state.Dependency);
         }
     }
 }

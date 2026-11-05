@@ -37,11 +37,13 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 桥接：`RoomEcsBridge` 把房间/世界快照转换为实体；网络层不直接写 Transform。
 - 预测：`PredictionState`（整数毫米位置/朝向/tick/累加器/边界与速度）、`PredictionInput`、
   `ServerSnapshot`、`PredictionStep` 缓冲、`PredictionHistoryElement` 缓冲；
-  `LocalPredictionSystem` 20 Hz 步进、领先 3 tick、误差 >50 mm 时回滚重放，网络层只收发 tick。
+  `LocalPredictionJob`（Burst `IJobEntity`）20 Hz 步进、领先 3 tick、误差 >50 mm 时回滚重放，
+  网络层只收发 tick。
 - 批处理：`FighterStateUpdateJob`（`[BurstCompile] IJobEntity`）计时/插值/倒地，
   `FighterViewSystem`（`UpdateAfter`）只做 Transform/Animator/受击颜色。
-- Entities Graphics：已装 6.6.0；静态网格 + URP Lit 可渲染；自定义地形 shader 缺少
-  DOTS instancing（洋红），骨骼角色需 deformation shader，暂不迁移。
+- Entities Graphics 实测：静态网格可渲染；自定义地形 shader 加 DOTS pragma 后仍洋红，
+  最小 unlit DOTS shader + 延迟注册仍无绘制（灰色）；骨骼角色需 DOTS skinning。
+  已回退，地形/角色继续 GameObject 渲染。
 - 基准：`FighterBenchmarkSystem`（PlayMode 测试创建）4000 远端 × 10 次：
   job 0.118 ms vs 托管 3.569 ms。
 
