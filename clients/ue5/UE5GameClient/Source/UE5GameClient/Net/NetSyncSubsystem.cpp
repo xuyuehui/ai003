@@ -474,10 +474,31 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 
 	if (bRoomBot)
 	{
-		// Headless demo: walk to the arena centre and swing periodically.
-		if (FMath::Abs(RoomLocalX) > 500.0) Command.DX = RoomLocalX > 0.0 ? -1 : 1;
-		if (FMath::Abs(RoomLocalZ) > 500.0) Command.DZ = RoomLocalZ > 0.0 ? -1 : 1;
-		Command.bAttack = (PredictedTick % 40) < 8;
+		// Headless demo: walk towards the nearest fighter, stop at ~2.5 m and swing.
+		float NearestDist = TNumericLimits<float>::Max();
+		FVector NearestPos = RoomCenter;
+		for (const TPair<FString, TWeakObjectPtr<ARemotePlayer>>& Pair : RoomRemotes)
+		{
+			if (ARemotePlayer* Remote = Pair.Value.Get())
+			{
+				const float Dist = FVector::Dist2D(Remote->GetActorLocation(), PredictedPos);
+				if (Dist < NearestDist)
+				{
+					NearestDist = Dist;
+					NearestPos = Remote->GetActorLocation();
+				}
+			}
+		}
+
+		if (NearestDist > 2500.f)
+		{
+			const float DeltaX = NearestPos.X - PredictedPos.X;
+			const float DeltaY = NearestPos.Y - PredictedPos.Y;
+			Command.DX = DeltaX > 0.f ? 1 : (DeltaX < 0.f ? -1 : 0);
+			// Protocol z = -UE Y.
+			Command.DZ = DeltaY > 0.f ? -1 : (DeltaY < 0.f ? 1 : 0);
+		}
+		Command.bAttack = (PredictedTick % 30) < 6 && NearestDist <= 3000.f;
 		return Command;
 	}
 

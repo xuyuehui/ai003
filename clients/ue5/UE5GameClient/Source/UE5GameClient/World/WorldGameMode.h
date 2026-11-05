@@ -35,6 +35,7 @@ private:
 
 	void BeginAutomation();
 	void BeginDemoShot();
+	void BeginRoomShot();
 	void RunSmokeStage1();
 	void RunSmokeStage2();
 	void ExitWith(int32 Code);
@@ -49,8 +50,10 @@ private:
 	bool bWorldSmoke = false;
 	bool bWorldShot = false;
 	bool bDemoShot = false;
+	bool bRoomShot = false;
 	FString ShotPath;
 	FString DemoShotPath;
+	FString RoomShotPath;
 	FTimerHandle AutomationTimer;
 	FVector SmokeStartLocation = FVector::ZeroVector;
 	TWeakObjectPtr<AWorldCharacter> SmokePlayer;

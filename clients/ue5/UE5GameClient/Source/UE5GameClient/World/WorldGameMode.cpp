@@ -40,6 +40,7 @@ void AWorldGameMode::InitGame(const FString& MapName, const FString& Options, FS
 	bWorldSmoke = FParse::Param(FCommandLine::Get(), TEXT("AI003WorldSmoke"));
 	bWorldShot = FParse::Param(FCommandLine::Get(), TEXT("AI003WorldShot"));
 	bDemoShot = FParse::Param(FCommandLine::Get(), TEXT("AI003DemoShot"));
+	bRoomShot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomShot"));
 
 	if (bWorldShot)
 	{
@@ -52,6 +53,12 @@ void AWorldGameMode::InitGame(const FString& MapName, const FString& Options, FS
 		FString Relative = FPaths::Combine(FPaths::ProjectDir(), TEXT("../../../artifacts/demo/ue5.png"));
 		FPaths::CollapseRelativeDirectories(Relative);
 		DemoShotPath = FPaths::ConvertRelativePathToFull(Relative);
+	}
+	if (bRoomShot)
+	{
+		FString Relative = FPaths::Combine(FPaths::ProjectDir(), TEXT("../../../artifacts/demo/room-ue5.png"));
+		FPaths::CollapseRelativeDirectories(Relative);
+		RoomShotPath = FPaths::ConvertRelativePathToFull(Relative);
 	}
 
 	WorldData = MakeShared<FAI003WorldData>();
@@ -84,6 +91,10 @@ void AWorldGameMode::StartPlay()
 	else if (bDemoShot)
 	{
 		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginDemoShot, 3.f, false);
+	}
+	else if (bRoomShot)
+	{
+		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginRoomShot, 20.f, false);
 	}
 }
 
@@ -133,6 +144,9 @@ void AWorldGameMode::SpawnEnvironment()
 			LightComponent->SetLightColor(FLinearColor(1.f, 0.95f, 0.86f));
 			LightComponent->SetAtmosphereSunLight(true);
 			LightComponent->SetCastShadows(true);
+			// Make this the forward-shading sun so the fill light does not trigger
+			// the "multiple directional lights" warning.
+			LightComponent->SetForwardShadingPriority(1);
 		}
 	}
 
@@ -149,6 +163,7 @@ void AWorldGameMode::SpawnEnvironment()
 			FillComponent->SetLightColor(FLinearColor(0.55f, 0.68f, 0.9f));
 			FillComponent->SetCastShadows(false);
 			FillComponent->SetAtmosphereSunLight(false);
+			FillComponent->SetForwardShadingPriority(0);
 		}
 	}
 
@@ -278,6 +293,16 @@ void AWorldGameMode::BeginDemoShot()
 		GetWorldTimerManager().SetTimer(
 			AutomationTimer, FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 1.5f, false);
 	}), 0.5f, false);
+}
+
+void AWorldGameMode::BeginRoomShot()
+{
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(RoomShotPath), true);
+	FScreenshotRequest::RequestScreenshot(RoomShotPath, false, false);
+	UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM-SHOT] requested %s"), *RoomShotPath);
+
+	GetWorldTimerManager().SetTimer(
+		AutomationTimer, FTimerDelegate::CreateLambda([this]() { ExitWith(0); }), 2.f, false);
 }
 
 void AWorldGameMode::BeginAutomation()

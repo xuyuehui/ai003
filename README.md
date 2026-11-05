@@ -75,6 +75,19 @@ UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地
 `demo-compare` 支持阈值（`-MaxBrightnessDelta 8 -MinWithin24 80`），
 `smoke-all -WithCompare` 会用这组阈值做回归。
 
+## 同房双端演示
+
+```powershell
+.\scripts\demo-room.cmd
+```
+
+一条命令完成：起网关 → Unity 以 `AI003_ROOM=1` 进房并截图 → UE 以 `-AI003Room -AI003RoomBot`
+进入同一房间并截图 → 合成 [docs/images/demo-room.png](docs/images/demo-room.png)，最后打印
+`/demo` 计数。Unity 侧由 `CaptureRoom` 自动等"两个 fighter"后截图，UE 侧由
+`-AI003RoomShot` 在房间内自截，不依赖窗口焦点。
+
+![Unity vs UE5 room](docs/images/demo-room.png)
+
 ## 已实现的技术点
 
 **里程碑 1：开放世界地形 + 角色跑动**（已完成）
@@ -344,6 +357,7 @@ ue5-world  PASS
 | `scripts/demo-status.ps1` | 读 `/healthz` + `/demo`，打印房间/流量/事件指标（`-Json` 机器可读） |
 | `scripts/demo-scenario.ps1` | 两个无头客户端进同一房间对战 + 指标基线校验（不需要引擎） |
 | `scripts/demo-compare.ps1` | 固定机位截取 Unity / UE 两帧、合成对比图与差分热力图，可设阈值 |
+| `scripts/demo-room.ps1` | 起网关 + Unity 进房 + UE bot 同房，双端截图并合成 |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总 |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
