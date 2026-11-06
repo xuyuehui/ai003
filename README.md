@@ -485,3 +485,12 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 3. **场景化演示脚本**：地形、同步、预测、重连、战斗各一段可复现操作与截图/GIF；
 4. **世界规模演示**：流式加载/分块 LOD，展示大于 2 km 的世界；
 5. **表现层替换**（可选）：正式竞技场与特效，提升截图观感。
+
+### 竞技场房间（Quake III 风格同步）
+
+- 房间参数 `sync=arena` 创建独立池（`arena3-N`），功能与帧同步房间一致，仅同步算法不同
+- 客户端发 `room.arena.cmd`（seq/msec/视角/移动/按键），服务器每 tick 执行一条
+- 快照 `room.arena.snap`/`room.arena.delta` 带 seq 与 ack，delta 用字段掩码压缩
+- 客户端本地预测 + 回滚重放；`room.arena.ack` 推进 delta 基线
+- 无头演示：`scripts\demo-arena.cmd`（Go arena 客户端，输出 `artifacts/demo/arena.json`）
+- 双端：Unity `ArenaClient`（`AI003_ARENA=1`）；UE `-AI003Arena`
