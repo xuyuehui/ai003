@@ -547,6 +547,12 @@ void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 		}
 	}
 
+	if (Seq == 1.0)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[AI003][ARENA] first snapshot seq=%.0f players=%d local=(%.2f, %.2f)"),
+			Seq, ArenaOrigins.Num(), RoomLocalX, RoomLocalZ);
+	}
+
 	TSharedPtr<FJsonObject> Ack = MakeShared<FJsonObject>();
 	Ack->SetNumberField(TEXT("seq"), Seq);
 	Send(TEXT("room.arena.ack"), Ack);
