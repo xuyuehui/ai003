@@ -18,6 +18,7 @@ type Info struct {
 	Players  int    `json:"players"`
 	Capacity int    `json:"capacity"`
 	Tick     uint64 `json:"tick"`
+	Sync     string `json:"sync"`
 }
 
 // Manager owns the room set and assigns players to rooms.
@@ -28,6 +29,7 @@ type Info struct {
 type Manager struct {
 	mu       sync.Mutex
 	rooms    map[string]*Room
+	arenas   map[string]*ArenaRoom
 	order    []string
 	capacity int
 	next     int
@@ -38,7 +40,7 @@ func NewManager(capacity int) *Manager {
 	if capacity <= 0 {
 		capacity = DefaultCapacity
 	}
-	return &Manager{rooms: make(map[string]*Room), capacity: capacity}
+	return &Manager{rooms: make(map[string]*Room), arenas: make(map[string]*ArenaRoom), capacity: capacity}
 }
 
 // Enter places a player into a room. It returns the room id and initial state.
@@ -72,7 +74,12 @@ func (m *Manager) Enter(roomID, playerID, name string) (string, State, error) {
 func (m *Manager) MarkOffline(roomID, playerID string) {
 	m.mu.Lock()
 	r, ok := m.rooms[roomID]
+	a, arena := m.arenas[roomID]
 	m.mu.Unlock()
+	if arena {
+		a.MarkOffline(playerID)
+		return
+	}
 	if ok {
 		r.MarkOffline(playerID)
 	}
@@ -93,6 +100,10 @@ func (m *Manager) Leave(roomID, playerID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if a, ok := m.arenas[roomID]; ok {
+		a.Leave(playerID)
+		return
+	}
 	if r, ok := m.rooms[roomID]; ok {
 		r.Leave(playerID)
 	}
@@ -138,11 +149,18 @@ func (m *Manager) FindOnline(playerID string) (string, bool) {
 	defer m.mu.Unlock()
 
 	roomID, ok := m.findPlayerLocked(playerID)
-	if !ok {
-		return "", false
+	if ok {
+		room := m.rooms[roomID]
+		if room == nil || !room.HasOnline(playerID) {
+			ok = false
+		}
 	}
-	room := m.rooms[roomID]
-	if room == nil || !room.HasOnline(playerID) {
+	if !ok {
+		if arenaID, arenaOK := m.findArenaPlayerLocked(playerID); arenaOK {
+			if a, exists := m.arenas[arenaID]; exists && a.HasOnline(playerID) {
+				return arenaID, true
+			}
+		}
 		return "", false
 	}
 	return roomID, true
@@ -159,6 +177,14 @@ func (m *Manager) CleanupEmpty(graceTicks int) int {
 
 	removed := 0
 	for _, id := range append([]string(nil), m.order...) {
+		if a, ok := m.arenas[id]; ok {
+			if a.EmptyFor() >= graceTicks {
+				delete(m.arenas, id)
+				delete(m.rooms, id)
+				removed++
+			}
+			continue
+		}
 		room := m.rooms[id]
 		if room == nil || room.EmptyFor() < graceTicks {
 			continue
@@ -196,9 +222,13 @@ func (m *Manager) List() []Info {
 
 	list := make([]Info, 0, len(m.order))
 	for _, id := range m.order {
+		if a, ok := m.arenas[id]; ok {
+			list = append(list, Info{ID: id, Players: a.Count(), Capacity: m.capacity, Tick: a.Tick(), Sync: string(SyncArena)})
+			continue
+		}
 		r := m.rooms[id]
 		tick, states := r.Snapshot()
-		list = append(list, Info{ID: id, Players: len(states), Capacity: m.capacity, Tick: tick})
+		list = append(list, Info{ID: id, Players: len(states), Capacity: m.capacity, Tick: tick, Sync: string(SyncFrame)})
 	}
 	return list
 }

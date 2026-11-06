@@ -95,6 +95,12 @@ private:
 	bool bRoomActive = false;
 	bool bRoomBot = false;
 	bool bRoomPusher = false;
+	bool bRoomArena = false;
+	int32 ArenaSeq = 0;
+	int32 ArenaSlot = 0;
+	TMap<int32, FVector> ArenaOrigins;
+	void SendArenaCmd(const FRoomCommand& Command);
+	void ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body);
 	FString RoomId;
 	int32 RoomTick = 0;
 	int32 RoomHP = 100;

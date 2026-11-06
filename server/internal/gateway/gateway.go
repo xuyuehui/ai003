@@ -88,8 +88,10 @@ type sessionInfo struct {
 
 // roomSub is one connection's subscription to a specific room.
 type roomSub struct {
-	roomID string
-	send   func(Message)
+	roomID   string
+	playerID string
+	ack      uint32
+	send     func(Message)
 }
 
 // New builds a Server that logs through logger (which may be nil).
@@ -153,6 +155,40 @@ func (s *Server) roomLoop() {
 		case <-ticker.C:
 			s.rooms.CleanupEmpty(room.EmptyRoomGraceTicks)
 			for _, roomID := range s.rooms.RoomIDs() {
+				if s.rooms.Mode(roomID) == room.SyncArena {
+					snap, ok := s.rooms.ArenaStep(roomID)
+					if !ok || len(snap.Players) == 0 {
+						continue
+					}
+					s.roomMu.Lock()
+					subs := make([]roomSub, 0, len(s.roomSubs))
+					for _, sub := range s.roomSubs {
+						if sub.roomID == roomID {
+							subs = append(subs, sub)
+						}
+					}
+					s.roomMu.Unlock()
+					for _, sub := range subs {
+						delta, ok := s.rooms.ArenaDelta(roomID, sub.playerID, sub.ack)
+						if !ok {
+							continue
+						}
+						typ := "room.arena.delta"
+						var body any = delta
+						if delta.Base == 0 {
+							typ = "room.arena.snap"
+							body = delta
+						}
+						msg, err := NewMessage(typ, 0, body)
+						if err != nil {
+							s.log.Error("encode arena snapshot", "error", err)
+							continue
+						}
+						sub.send(msg)
+					}
+					continue
+				}
+
 				frame, ok := s.rooms.Step(roomID)
 				if !ok || len(frame.Players) == 0 {
 					continue
@@ -361,6 +397,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				Name     string `json:"name"`
 				Room     string `json:"room"`
 				ClientID string `json:"clientId"`
+				Sync     string `json:"sync"`
 			}
 			if len(msg.Body) > 0 {
 				if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -388,20 +425,32 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			roomID, state, err := s.rooms.Enter(body.Room, clientID, body.Name)
+			mode := room.SyncFrame
+			if body.Sync == string(room.SyncArena) {
+				mode = room.SyncArena
+			}
+			roomID, state, err := s.rooms.EnterSync(body.Room, clientID, body.Name, mode)
 			if err != nil {
 				writeError(msg.Seq, msg.Type, err.Error())
 				continue
 			}
-			tick, players, _ := s.rooms.Snapshot(roomID)
+			var tick uint64
+			var players []room.State
+			if mode == room.SyncArena {
+				tick = s.rooms.TickOf(roomID)
+				players = []room.State{state}
+			} else {
+				tick, players, _ = s.rooms.Snapshot(roomID)
+			}
 
 			s.roomMu.Lock()
 			s.sessions[sessionID] = sessionInfo{clientID: clientID, roomID: roomID}
-			s.roomSubs[sessionID] = roomSub{roomID: roomID, send: func(m Message) { _ = write(m) }}
+			s.roomSubs[sessionID] = roomSub{roomID: roomID, playerID: clientID, send: func(m Message) { _ = write(m) }}
 			s.roomMu.Unlock()
 
 			entered, err := NewMessage("room.entered", msg.Seq, map[string]any{
 				"roomId":              roomID,
+				"sync":                string(mode),
 				"playerId":            clientID,
 				"tick":                tick,
 				"state":               state,
@@ -446,11 +495,53 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				writeError(msg.Seq, msg.Type, "room.enter before room.input")
 				continue
 			}
+			if s.rooms.Mode(info.roomID) == room.SyncArena {
+				writeError(msg.Seq, msg.Type, "frame room.input is not valid in an arena room; use room.arena.cmd")
+				continue
+			}
 			in := room.Input{DX: payload.DX, DZ: payload.DZ, Buttons: payload.Buttons}
 			if !s.rooms.SetInput(info.roomID, info.clientID, payload.Tick, in) {
 				writeError(msg.Seq, msg.Type, "room.input for unknown player")
 				continue
 			}
+
+		case "room.arena.cmd":
+			var cmd room.Cmd
+			if err := json.Unmarshal(msg.Body, &cmd); err != nil {
+				writeError(msg.Seq, msg.Type, "invalid room.arena.cmd body: "+err.Error())
+				continue
+			}
+			s.roomMu.Lock()
+			info := s.sessions[sessionID]
+			s.roomMu.Unlock()
+			if info.roomID == "" {
+				writeError(msg.Seq, msg.Type, "room.enter before room.arena.cmd")
+				continue
+			}
+			if s.rooms.Mode(info.roomID) != room.SyncArena {
+				writeError(msg.Seq, msg.Type, "room.arena.cmd is only valid in an arena room")
+				continue
+			}
+			if !s.rooms.SubmitCmd(info.roomID, info.clientID, cmd) {
+				writeError(msg.Seq, msg.Type, "stale or duplicate arena cmd")
+				continue
+			}
+
+		case "room.arena.ack":
+			var payload struct {
+				Seq uint32 `json:"seq"`
+			}
+			if err := json.Unmarshal(msg.Body, &payload); err != nil {
+				writeError(msg.Seq, msg.Type, "invalid room.arena.ack body: "+err.Error())
+				continue
+			}
+			s.roomMu.Lock()
+			sub := s.roomSubs[sessionID]
+			if payload.Seq > sub.ack {
+				sub.ack = payload.Seq
+				s.roomSubs[sessionID] = sub
+			}
+			s.roomMu.Unlock()
 
 		case "room.list":
 			list, err := NewMessage("room.list", msg.Seq, map[string]any{"rooms": s.rooms.List()})

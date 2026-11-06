@@ -140,3 +140,33 @@ go run ./cmd/worldgen -out ..\world
 2. `smoke-all` 的 `go-tests` / `go-client` PASS；
 3. 协议变更同步到 `protocol/README.md` 与两端客户端；
 4. 世界数据变更后重新生成并提交 `world/`。
+
+## 竞技场同步协议（sync=arena，Quake III 风格）
+
+`room.enter` 增加可选 `sync` 字段：`frame`（默认，帧同步房间）或 `arena`。
+`room.entered` 会回显 `sync`，arena 房间 id 形如 `arena3-N`，与帧同步房间分开匹配。
+
+客户端每 50 ms 发送一条 usercmd：
+
+```json
+{"type":"room.arena.cmd","body":{"seq":42,"msec":50,"yaw":0,"pitch":0,
+ "forward":1,"side":0,"up":0,"buttons":0}}
+```
+
+服务器每个 tick 执行一条 cmd（队列空时复用最后一条），并下发带序号的快照：
+
+- `room.arena.snap`：全量 delta（`base=0`），客户端加入/丢失基线时使用
+- `room.arena.delta`：相对 `base` 的字段掩码增量
+
+```json
+{"type":"room.arena.delta","body":{"seq":212,"base":211,"serverTime":10600,
+ "ack":165,"players":[{"id":1,"mask":1,"origin":[0,0,-500]}]}}
+```
+
+掩码位：`1=origin`、`2=velocity`、`4=health`、`8=yaw`、`16=flags`；
+`removed` 列出离开的玩家。客户端应用后回 `room.arena.ack{seq}`，
+服务器据此选择下一次 delta 的基线。
+
+客户端行为：本地立即预测自己的 usercmd；收到快照后回到权威位置并重放
+`seq > ack` 的未确认 cmd；远端玩家按快照插值/外推。
+丢包/乱序/重复由服务端 seq 去重与客户端 ack 单调性处理。
