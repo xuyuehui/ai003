@@ -135,6 +135,19 @@ func New(capacity int) *Room {
 	return &Room{players: make(map[string]*Player), capacity: capacity}
 }
 
+// Onlines returns the ids of the currently online players.
+func (r *Room) Onlines() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.order))
+	for _, id := range r.order {
+		if p, ok := r.players[id]; ok && !p.Offline {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // HasOnline reports whether the player exists and is not offline.
 func (r *Room) HasOnline(id string) bool {
 	r.mu.Lock()
