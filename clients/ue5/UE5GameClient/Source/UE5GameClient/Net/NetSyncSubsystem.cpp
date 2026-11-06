@@ -45,6 +45,7 @@ void UNetSyncSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bRoomBot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomBot"));
 	bRoomPusher = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomPusher"));
 	bRoomArena = FParse::Param(FCommandLine::Get(), TEXT("AI003Arena"));
+	UE_LOG(LogTemp, Display, TEXT("[AI003][ARENA] flags room=%d arena=%d"), bRoomEnabled ? 1 : 0, bRoomArena ? 1 : 0);
 	ClientID = LoadOrCreateClientId();
 
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
@@ -491,6 +492,7 @@ void UNetSyncSubsystem::SendRoomEnter()
 		Body->SetStringField(TEXT("room"), RoomName);
 	}
 
+	UE_LOG(LogTemp, Display, TEXT("[AI003][ARENA] sending room.enter sync=%s"), bRoomArena ? TEXT("arena") : TEXT("frame"));
 	Send(TEXT("room.enter"), Body);
 }
 
@@ -576,6 +578,10 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 		// Headless demo: walk towards the nearest fighter, stop at ~2.5 m and swing.
 		float NearestDist = TNumericLimits<float>::Max();
 		FVector NearestPos = RoomCenter;
+		if (RoomRemotes.Num() == 0)
+		{
+			NearestPos = PredictedPos + FVector(1000.f, 0.f, 0.f);
+		}
 		for (const TPair<FString, TWeakObjectPtr<ARemotePlayer>>& Pair : RoomRemotes)
 		{
 			if (ARemotePlayer* Remote = Pair.Value.Get())
