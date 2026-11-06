@@ -636,6 +636,7 @@ void UNetSyncSubsystem::SendRoomInput(int32 Tick, const FRoomCommand& Command)
 	Body->SetNumberField(TEXT("dx"), Command.DX);
 	Body->SetNumberField(TEXT("dz"), Command.DZ);
 	Body->SetNumberField(TEXT("buttons"), Command.bAttack ? 1 : 0);
+	if (bUseUdp) { static int DebugInputs = 0; if (DebugInputs < 3) { DebugInputs++; UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] input over udp")); } }
 	SendRoomEnvelope(TEXT("room.input"), Body);
 }
 
@@ -821,6 +822,14 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 	if (!Body.IsValid())
 	{
 		return;
+	}
+	{
+		static int DebugFrames = 0;
+		if (DebugFrames < 3)
+		{
+			DebugFrames++;
+			UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] frame #%d over udp=%d"), DebugFrames, bUseUdp ? 1 : 0);
+		}
 	}
 
 	Body->TryGetNumberField(TEXT("tick"), RoomTick);
