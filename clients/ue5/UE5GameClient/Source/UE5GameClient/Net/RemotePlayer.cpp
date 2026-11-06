@@ -55,6 +55,14 @@ void ARemotePlayer::LoadVisual()
 
 void ARemotePlayer::ApplySnapshot(const FVector& LocationCm, float Yaw, const FString& AnimName)
 {
+	const float Now = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.f;
+	if (bHasPreviousTarget && Now > LastSnapshotAt)
+	{
+		SnapshotVelocity = (LocationCm - PreviousTarget) / FMath::Max(0.001f, Now - LastSnapshotAt);
+	}
+	PreviousTarget = LocationCm;
+	bHasPreviousTarget = true;
+	LastSnapshotAt = Now;
 	TargetLocation = LocationCm;
 	TargetYaw = Yaw;
 	TargetAnim = AnimName.IsEmpty() ? TEXT("idle") : AnimName;
@@ -124,6 +132,12 @@ void ARemotePlayer::Tick(float DeltaSeconds)
 	const float Now = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.f;
 
 	FVector Target = TargetLocation;
+	const float Stale = Now - LastSnapshotAt;
+	if (bHasPreviousTarget && Stale > 0.2f)
+	{
+		// Extrapolate up to 0.5 s when snapshots stop arriving (Quake-style).
+		Target += SnapshotVelocity * FMath::Min(Stale, 0.5f);
+	}
 	if (Now < AttackUntil)
 	{
 		const float Progress = 1.f - (AttackUntil - Now) / 0.18f;

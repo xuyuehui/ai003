@@ -58,6 +58,10 @@ private:
 	TObjectPtr<UAnimSequence> CurrentSequence;
 
 	FVector TargetLocation = FVector::ZeroVector;
+	FVector PreviousTarget = FVector::ZeroVector;
+	FVector SnapshotVelocity = FVector::ZeroVector;
+	float LastSnapshotAt = 0.f;
+	bool bHasPreviousTarget = false;
 	float TargetYaw = 0.f;
 	float CurrentYaw = 0.f;
 	FString TargetAnim = TEXT("idle");
