@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -78,6 +79,12 @@ type Server struct {
 
 	stop     chan struct{}
 	stopOnce sync.Once
+
+	udpMu       sync.Mutex
+	udpConn     net.PacketConn
+	udpAddr     string
+	udpTokens   map[string]string
+	udpSessions map[uint32]*udpSession
 }
 
 // sessionInfo ties a websocket session to the client's persistent id and room.
@@ -125,6 +132,8 @@ func NewWithWorld(logger *slog.Logger, worldDir string) *Server {
 	s.hub.metrics = s.metrics
 	s.hub.Start()
 	s.rooms = room.NewManager(room.DefaultCapacity)
+	s.udpTokens = make(map[string]string)
+	s.udpSessions = make(map[uint32]*udpSession)
 	s.roomSubs = make(map[string]roomSub)
 	s.sessions = make(map[string]sessionInfo)
 	s.stop = make(chan struct{})
@@ -140,6 +149,11 @@ func NewWithWorld(logger *slog.Logger, worldDir string) *Server {
 // Close stops background work (snapshot hub and room tick loop).
 func (s *Server) Close() {
 	s.stopOnce.Do(func() { close(s.stop) })
+	s.udpMu.Lock()
+	if s.udpConn != nil {
+		_ = s.udpConn.Close()
+	}
+	s.udpMu.Unlock()
 	s.hub.Close()
 }
 
@@ -448,8 +462,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			s.roomSubs[sessionID] = roomSub{roomID: roomID, playerID: clientID, send: func(m Message) { _ = write(m) }}
 			s.roomMu.Unlock()
 
+			var udpField any
+			if addr := s.UDPAddr(); addr != "" {
+				udpField = map[string]any{"addr": addr, "token": s.newUDPToken(sessionID)}
+			}
 			entered, err := NewMessage("room.entered", msg.Seq, map[string]any{
 				"roomId":              roomID,
+				"udp":                 udpField,
 				"sync":                string(mode),
 				"playerId":            clientID,
 				"tick":                tick,

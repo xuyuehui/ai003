@@ -314,3 +314,25 @@ func (e *Endpoint) Closed() bool {
 	defer e.mu.Unlock()
 	return e.closed
 }
+
+// TypeHello is the handshake packet type used to bind a UDP session.
+func TypeHello() uint8 { return typeHello }
+
+// SendHello sends a handshake packet (type hello) with the given payload.
+func (e *Endpoint) SendHello(payload []byte) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return ErrClosed
+	}
+	e.sendLocked(typeHello, payload)
+	return nil
+}
+
+// SessionOf returns the session id and packet type of a datagram.
+func SessionOf(pkt []byte) (uint32, uint8, bool) {
+	if len(pkt) < headerSize || binary.LittleEndian.Uint32(pkt[0:4]) != magic || pkt[4] != version {
+		return 0, 0, false
+	}
+	return binary.LittleEndian.Uint32(pkt[6:10]), pkt[5], true
+}
