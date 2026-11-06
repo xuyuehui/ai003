@@ -4,7 +4,8 @@
     [int]$Seconds = 5,
     [switch]$KeepRunning,
     [switch]$NoPublish,
-    [switch]$NoAssert
+    [switch]$NoAssert,
+    [ValidateSet('frame', 'arena')][string]$Sync = 'frame'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,9 +73,12 @@ try {
     $previousRoom = $env:AI003_ROOM
     $previousRoomName = $env:AI003_ROOM_NAME
     $previousHold = $env:AI003_ROOM_HOLD
+    $previousArena = $env:AI003_ARENA
     $env:AI003_ROOM = '1'
     $env:AI003_ROOM_NAME = $roomName
     $env:AI003_ROOM_HOLD = '30'
+    if ($Sync -eq 'arena') { $env:AI003_ROOM = '0'; $env:AI003_ARENA = '1' }
+    else { Remove-Item Env:AI003_ARENA -ErrorAction SilentlyContinue }
     try {
         $unityProcess = Start-Process -FilePath $Unity -PassThru `
             -ArgumentList @('-projectPath', $unityProject,
@@ -87,6 +91,8 @@ try {
         $env:AI003_ROOM = $previousRoom
         $env:AI003_ROOM_NAME = $previousRoomName
         $env:AI003_ROOM_HOLD = $previousHold
+        if ($null -eq $previousArena) { Remove-Item Env:AI003_ARENA -ErrorAction SilentlyContinue }
+        else { $env:AI003_ARENA = $previousArena }
     }
 
     Start-Sleep -Seconds 5
@@ -99,9 +105,9 @@ try {
     $ueProcess = Start-Process -FilePath $ueEditor -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $logs 'ue-room-shot.log') `
         -RedirectStandardError (Join-Path $logs 'ue-room-shot.err') `
-        -ArgumentList @($ueProject, '-game', '-windowed', '-ResX=1280', '-ResY=720',
+        -ArgumentList (@($ueProject, '-game', '-windowed', '-ResX=1280', '-ResY=720',
             '-nosplash', '-AlwaysOnTop', '-AI003Room', '-AI003RoomBot', '-AI003RoomShot',
-            "-AI003RoomName=$roomName", '-log')
+            "-AI003RoomName=$roomName", '-log') + $(if ($Sync -eq 'arena') { @('-AI003Arena') } else { @() }))
     Start-Sleep -Seconds 8
     [void](Focus-UE)
 
@@ -196,9 +202,11 @@ try {
     $frameDelta = [int64]$demo.stats.roomFrames - [int64]$demoBefore.stats.roomFrames
     $attackDelta = [int64]$demo.stats.attackEvents - [int64]$demoBefore.stats.attackEvents
     $hitDelta = [int64]$demo.stats.hitEvents - [int64]$demoBefore.stats.hitEvents
-    if ($frameDelta -le 0) { $problems += "no room frames observed" }
-    if ($attackDelta -le 0) { $problems += "no attack events observed" }
-    if ($hitDelta -le 0) { $problems += "no hit events observed" }
+    if ($Sync -ne 'arena') {
+        if ($frameDelta -le 0) { $problems += "no room frames observed" }
+        if ($attackDelta -le 0) { $problems += "no attack events observed" }
+        if ($hitDelta -le 0) { $problems += "no hit events observed" }
+    }
 
     foreach ($shot in @($unityShot, $ueShot)) {
         if (-not (Test-Path $shot)) { $problems += "missing screenshot $shot"; continue }
