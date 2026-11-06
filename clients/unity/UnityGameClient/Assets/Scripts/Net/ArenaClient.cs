@@ -53,6 +53,9 @@ namespace AI003.Net
         private readonly Dictionary<int, RemoteInterp> _interp = new Dictionary<int, RemoteInterp>();
         private const float InterpDelay = 0.1f;
         private bool _inRoom;
+        private bool _useUdp;
+        private RudpTransport _udp;
+        private uint _lastSnapshotSeq;
 
         public bool InRoom => _inRoom;
         public int RemoteCount => _interp.Count;
@@ -101,6 +104,15 @@ namespace AI003.Net
             _connection.Send(new Envelope { Type = "room.enter", Seq = _connection.NextSeq(), Body = JObject.FromObject(body) });
         }
 
+        private void SendRoom(Envelope envelope)
+        {
+            if (_useUdp && _udp != null && _udp.Active)
+            {
+                _udp.Send(envelope);
+                return;
+            }
+            if (_connection != null) _connection.Send(envelope);
+        }
         private void HandleMessage(Envelope envelope)
         {
             switch (envelope.Type)
@@ -138,8 +150,17 @@ namespace AI003.Net
                 _local.enabled = false;
                 _predicted = _local.transform.position;
             }
+            var udp = body["udp"] as JObject;
+            if (udp != null && udp["addr"] != null)
+            {
+                _udp = GetComponent<RudpTransport>();
+                if (_udp == null) _udp = gameObject.AddComponent<RudpTransport>();
+                _udp.Message += HandleMessage;
+                _udp.Connect(udp["addr"].ToString(), udp["token"]?.ToString() ?? "");
+                _useUdp = true;
+            }
             _inRoom = true;
-            Debug.Log($"[AI003][ARENA] entered {body["roomId"]} slot={_slot}");
+            Debug.Log($"[AI003][ARENA] entered {body["roomId"]} slot={_slot} udp={_useUdp}");
         }
 
         private void Update()
@@ -169,7 +190,7 @@ namespace AI003.Net
             Predict(cmd);
             ApplyPredicted();
 
-            _connection.Send(new Envelope
+            SendRoom(new Envelope
             {
                 Type = "room.arena.cmd",
                 Seq = _connection.NextSeq(),
@@ -211,6 +232,8 @@ namespace AI003.Net
         {
             if (body == null) return;
             uint seq = body["seq"]?.Value<uint>() ?? 0;
+            if (seq <= _lastSnapshotSeq) return;
+            _lastSnapshotSeq = seq;
             uint ack = body["ack"]?.Value<uint>() ?? 0;
             uint baseSeq = body["base"]?.Value<uint>() ?? 0;
 
@@ -284,7 +307,7 @@ namespace AI003.Net
                 };
             }
 
-            _connection.Send(new Envelope { Type = "room.arena.ack", Seq = _connection.NextSeq(), Body = JObject.FromObject(new { seq }) });
+            SendRoom(new Envelope { Type = "room.arena.ack", Seq = 0, Body = JObject.FromObject(new { seq }) });
         }
 
         private static Snapshot Clone(Snapshot source)
