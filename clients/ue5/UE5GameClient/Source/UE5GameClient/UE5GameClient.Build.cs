@@ -16,6 +16,8 @@ public class UE5GameClient : ModuleRules
 			"Engine",
 			"InputCore",
 			"WebSockets",
+			"Sockets",
+			"Networking",
 			"Json",
 			"JsonUtilities",
 			"ProceduralMeshComponent",

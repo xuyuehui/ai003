@@ -11,6 +11,7 @@
 class IWebSocket;
 class ARemotePlayer;
 class FJsonObject;
+class FRudpTransport;
 
 /**
  * Gateway state sync for the UE5 client (protocol v2).
@@ -73,6 +74,9 @@ private:
 	FVector RoomToWorld(double XMeters, double ZMeters) const;
 
 	TSharedPtr<IWebSocket> Socket;
+	FRudpTransport* Udp = nullptr;
+	bool bUseUdp = false;
+	void SendRoomEnvelope(const FString& Type, const TSharedPtr<FJsonObject>& Body);
 	FTSTicker::FDelegateHandle TickerHandle;
 
 	TMap<FString, TWeakObjectPtr<ARemotePlayer>> Remotes;

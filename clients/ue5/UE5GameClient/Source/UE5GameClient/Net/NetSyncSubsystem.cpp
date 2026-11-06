@@ -1,6 +1,7 @@
 // Copyright AI003. All rights reserved.
 
 #include "Net/NetSyncSubsystem.h"
+#include "Net/RudpTransport.h"
 
 #include "Dom/JsonObject.h"
 #include "DrawDebugHelpers.h"
@@ -371,6 +372,15 @@ void UNetSyncSubsystem::RemoveStale(const TSet<FString>& Seen)
 
 bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 {
+	if (Udp != nullptr)
+	{
+		TArray<FString> UdpMessages;
+		Udp->Tick(DeltaSeconds, UdpMessages);
+		for (const FString& UdpMessage : UdpMessages)
+		{
+			HandleMessage(UdpMessage);
+		}
+	}
 	if (!bEnabled)
 	{
 		return true;
@@ -509,6 +519,21 @@ void UNetSyncSubsystem::StepArenaLocal(const FRoomCommand& Command)
 	}
 }
 
+void UNetSyncSubsystem::SendRoomEnvelope(const FString& Type, const TSharedPtr<FJsonObject>& Body)
+{
+	if (bUseUdp && Udp != nullptr)
+	{
+		TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
+		Root->SetStringField(TEXT("type"), Type);
+		Root->SetObjectField(TEXT("body"), Body);
+		FString Out;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out);
+		FJsonSerializer::Serialize(Root.ToSharedRef(), Writer);
+		Udp->Send(Out);
+		return;
+	}
+	Send(Type, Body);
+}
 void UNetSyncSubsystem::SendArenaCmd(const FRoomCommand& Command)
 {
 	auto Body = MakeShared<FJsonObject>();
@@ -523,7 +548,7 @@ void UNetSyncSubsystem::SendArenaCmd(const FRoomCommand& Command)
 	Body->SetNumberField(TEXT("side"), Command.DX);
 	Body->SetNumberField(TEXT("up"), 0);
 	Body->SetNumberField(TEXT("buttons"), Command.bAttack ? 1 : 0);
-	Send(TEXT("room.arena.cmd"), Body);
+	SendRoomEnvelope(TEXT("room.arena.cmd"), Body);
 }
 
 void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
@@ -594,7 +619,7 @@ void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 		}
 	}
 
-	if (Seq == 1.0)
+	if (Seq <= 2.0)
 	{
 		UE_LOG(LogTemp, Display, TEXT("[AI003][ARENA] first snapshot seq=%.0f players=%d local=(%.2f, %.2f)"),
 			Seq, ArenaOrigins.Num(), RoomLocalX, RoomLocalZ);
@@ -602,7 +627,7 @@ void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 
 	TSharedPtr<FJsonObject> Ack = MakeShared<FJsonObject>();
 	Ack->SetNumberField(TEXT("seq"), Seq);
-	Send(TEXT("room.arena.ack"), Ack);
+	SendRoomEnvelope(TEXT("room.arena.ack"), Ack);
 }
 void UNetSyncSubsystem::SendRoomInput(int32 Tick, const FRoomCommand& Command)
 {
@@ -611,7 +636,7 @@ void UNetSyncSubsystem::SendRoomInput(int32 Tick, const FRoomCommand& Command)
 	Body->SetNumberField(TEXT("dx"), Command.DX);
 	Body->SetNumberField(TEXT("dz"), Command.DZ);
 	Body->SetNumberField(TEXT("buttons"), Command.bAttack ? 1 : 0);
-	Send(TEXT("room.input"), Body);
+	SendRoomEnvelope(TEXT("room.input"), Body);
 }
 
 UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
@@ -715,6 +740,19 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 
 	Body->TryGetStringField(TEXT("playerId"), PlayerId);
 	Body->TryGetStringField(TEXT("roomId"), RoomId);
+	const TSharedPtr<FJsonObject>* UdpInfo = nullptr;
+	if (Body->TryGetObjectField(TEXT("udp"), UdpInfo) && UdpInfo != nullptr)
+	{
+		FString UdpAddr, UdpToken;
+		(*UdpInfo)->TryGetStringField(TEXT("addr"), UdpAddr);
+		(*UdpInfo)->TryGetStringField(TEXT("token"), UdpToken);
+		if (!UdpAddr.IsEmpty() && !UdpToken.IsEmpty())
+		{
+			Udp = new FRudpTransport();
+			bUseUdp = Udp->Connect(UdpAddr, UdpToken);
+			UE_LOG(LogTemp, Display, TEXT("[AI003][RUDP] connect %s ok=%d"), *UdpAddr, bUseUdp ? 1 : 0);
+		}
+	}
 	FString SyncMode;
 	if (Body->TryGetStringField(TEXT("sync"), SyncMode) && SyncMode == TEXT("arena"))
 	{
