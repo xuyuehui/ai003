@@ -87,6 +87,7 @@ type roomInfo struct {
 	Players  int    `json:"players"`
 	Capacity int    `json:"capacity"`
 	Tick     uint64 `json:"tick"`
+	Sync     string `json:"sync"`
 }
 
 func (s *Server) handleDemo(w http.ResponseWriter, _ *http.Request) {
@@ -99,6 +100,7 @@ func (s *Server) handleDemo(w http.ResponseWriter, _ *http.Request) {
 			Players:  room.Players,
 			Capacity: room.Capacity,
 			Tick:     room.Tick,
+			Sync:     room.Sync,
 		})
 	}
 
