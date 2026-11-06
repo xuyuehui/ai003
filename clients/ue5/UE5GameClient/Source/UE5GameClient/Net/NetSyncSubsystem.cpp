@@ -496,10 +496,25 @@ void UNetSyncSubsystem::SendRoomEnter()
 	Send(TEXT("room.enter"), Body);
 }
 
+void UNetSyncSubsystem::StepArenaLocal(const FRoomCommand& Command)
+{
+	const double Step = (Command.DX != 0 && Command.DZ != 0) ? 0.177 : 0.25;
+	RoomLocalX += Command.DX * Step;
+	RoomLocalZ += Command.DZ * Step;
+	if (AWorldCharacter* Character = LocalCharacter())
+	{
+		FVector Location = RoomToWorld(RoomLocalX, RoomLocalZ);
+		Location.Z = Character->GetActorLocation().Z;
+		Character->SetActorLocation(Location);
+	}
+}
+
 void UNetSyncSubsystem::SendArenaCmd(const FRoomCommand& Command)
 {
 	auto Body = MakeShared<FJsonObject>();
 	ArenaSeq++;
+	ArenaPending.Add(ArenaSeq, Command);
+	StepArenaLocal(Command);
 	Body->SetNumberField(TEXT("seq"), ArenaSeq);
 	Body->SetNumberField(TEXT("msec"), 50);
 	Body->SetNumberField(TEXT("yaw"), 0);
@@ -514,7 +529,9 @@ void UNetSyncSubsystem::SendArenaCmd(const FRoomCommand& Command)
 void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 {
 	double Seq = 0.0;
+	double AckSeqValue = 0.0;
 	Body->TryGetNumberField(TEXT("seq"), Seq);
+	Body->TryGetNumberField(TEXT("ack"), AckSeqValue);
 
 	const TArray<TSharedPtr<FJsonValue>>* Players = nullptr;
 	if (Body->TryGetArrayField(TEXT("players"), Players) && Players != nullptr)
@@ -534,15 +551,43 @@ void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 				const double X = (*Origin)[0]->AsNumber() / 1000.0;
 				const double Z = (*Origin)[2]->AsNumber() / 1000.0;
 				ArenaOrigins.Add(Id, FVector(X, Z, 0.0));
+				if (Id != ArenaSlot + 1)
+				{
+					const FString Key = FString::Printf(TEXT("arena-%d"), Id);
+					TWeakObjectPtr<ARemotePlayer>& Slot = RoomRemotes.FindOrAdd(Key);
+					ARemotePlayer* Remote = Slot.Get();
+					const FVector RemoteTarget = RoomToWorld(X, Z);
+					if (Remote == nullptr && GetWorld() != nullptr)
+					{
+						Remote = GetWorld()->SpawnActor<ARemotePlayer>(RemoteTarget, FRotator::ZeroRotator);
+						Slot = Remote;
+					}
+					if (Remote != nullptr)
+					{
+						Remote->ApplySnapshot(RemoteTarget, 0.f, TEXT("idle"));
+					}
+				}
 				if (Id == ArenaSlot + 1)
 				{
+					// Rollback to the authoritative position, replay unacked cmds.
 					RoomLocalX = X;
 					RoomLocalZ = Z;
-					if (AWorldCharacter* Character = LocalCharacter())
+					const int32 AckSeq = static_cast<int32>(AckSeqValue);
+					TArray<int32> Stale;
+					for (const TPair<int32, FRoomCommand>& Pending : ArenaPending)
 					{
-						FVector Location = RoomToWorld(X, Z);
-						Location.Z = Character->GetActorLocation().Z;
-						Character->SetActorLocation(Location);
+						if (Pending.Key <= AckSeq)
+						{
+							Stale.Add(Pending.Key);
+						}
+					}
+					for (int32 Key : Stale)
+					{
+						ArenaPending.Remove(Key);
+					}
+					for (const TPair<int32, FRoomCommand>& Pending : ArenaPending)
+					{
+						StepArenaLocal(Pending.Value);
 					}
 				}
 			}
