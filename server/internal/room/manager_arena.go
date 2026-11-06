@@ -43,6 +43,7 @@ func (m *Manager) EnterSync(roomID, playerID, name string, mode SyncMode) (strin
 		}
 	} else if _, ok := m.arenas[roomID]; !ok {
 		m.arenas[roomID] = NewArena(m.capacity)
+		m.order = append(m.order, roomID)
 	}
 
 	a := m.arenas[roomID]

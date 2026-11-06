@@ -30,7 +30,6 @@ namespace AI003.EditorTools
         private static double _capturedAt;
         private static bool _captured;
         private static bool _subscribed;
-        private static AI003.Net.ArenaClient arena;
 
         public static void Run()
         {
@@ -79,37 +78,19 @@ namespace AI003.EditorTools
                 RoomClient room = RoomClient.Instance;
                 var bootstrap = UnityEngine.Object.FindFirstObjectByType<AI003.World.WorldBootstrap>();
                 bool worldReady = bootstrap != null && bootstrap.IsReady;
-                bool arenaMode = System.Environment.GetEnvironmentVariable("AI003_ARENA") == "1";
-                bool ready;
-                string roomId;
-                int fighters;
-                if (arenaMode)
-                {
-                    if (arena == null && bootstrap != null)
-                    {
-                        arena = bootstrap.GetComponent<AI003.Net.ArenaClient>();
-                        if (arena == null) arena = bootstrap.gameObject.AddComponent<AI003.Net.ArenaClient>();
-                    }
-                    ready = arena != null && arena.InRoom && arena.RemoteCount >= 1 && worldReady;
-                    roomId = "arena";
-                    fighters = arena != null ? arena.RemoteCount + 1 : 0;
-                }
-                else
-                {
-                    // Wait until the local fighter exists and prediction has caught up.
-                    ready = room != null && room.InRoom && room.Players >= 2
-                            && worldReady
-                            && room.PredictedTick >= room.ServerTick;
-                    roomId = room != null ? room.RoomId : "?";
-                    fighters = room != null ? room.Players : 0;
-                }
+                // Wait until the local fighter exists and prediction has caught up:
+                // during world bootstrap the controller is missing for a moment and
+                // the room tick would otherwise be captured ahead of the prediction.
+                bool ready = room != null && room.InRoom && room.Players >= 2
+                             && worldReady
+                             && room.PredictedTick >= room.ServerTick;
 
                 if (!_captured && ready && elapsed > ReadySeconds)
                 {
                     ScreenCapture.CaptureScreenshot(_outputPath);
                     _captured = true;
                     _capturedAt = Time.realtimeSinceStartupAsDouble;
-                    Debug.Log($"[AI003][ROOM-SHOT] screenshot requested ({roomId}, {fighters} fighters)");
+                    Debug.Log($"[AI003][ROOM-SHOT] screenshot requested ({room.RoomId}, {room.Players} fighters)");
                 }
 
                 if (_captured && Time.realtimeSinceStartupAsDouble - _capturedAt > HoldSeconds)

@@ -130,3 +130,29 @@ func TestFindOnlineIgnoresOffline(t *testing.T) {
 		t.Fatal("offline player should not be reported online")
 	}
 }
+func TestExplicitArenaRoomIsListedAndSteppable(t *testing.T) {
+	m := NewManager(8)
+	id, _, err := m.EnterSync("duel-room", "a", "A", SyncArena)
+	if err != nil || id != "duel-room" {
+		t.Fatalf("EnterSync = %q, %v", id, err)
+	}
+	if m.Mode(id) != SyncArena {
+		t.Fatalf("mode = %q", m.Mode(id))
+	}
+	found := false
+	for _, rid := range m.RoomIDs() {
+		if rid == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("explicit arena room missing from RoomIDs")
+	}
+	list := m.List()
+	if len(list) != 1 || list[0].Sync != "arena" || list[0].ID != id {
+		t.Fatalf("list = %+v", list)
+	}
+	if _, ok := m.ArenaStep(id); !ok {
+		t.Fatal("ArenaStep failed for explicit room")
+	}
+}

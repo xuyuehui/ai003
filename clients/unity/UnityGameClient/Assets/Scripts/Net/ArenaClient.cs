@@ -53,9 +53,6 @@ namespace AI003.Net
         private readonly Dictionary<int, RemoteInterp> _interp = new Dictionary<int, RemoteInterp>();
         private const float InterpDelay = 0.1f;
         private bool _inRoom;
-
-        public bool InRoom => _inRoom;
-        public int RemoteCount => _interp.Count;
         private int _debugForward;
         private int _debugSide;
         private float _debugUntil;
