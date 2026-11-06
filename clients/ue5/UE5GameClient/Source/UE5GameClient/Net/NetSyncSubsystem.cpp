@@ -44,6 +44,7 @@ void UNetSyncSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bRoomEnabled = FParse::Param(FCommandLine::Get(), TEXT("AI003Room"));
 	bRoomBot = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomBot"));
 	bRoomPusher = FParse::Param(FCommandLine::Get(), TEXT("AI003RoomPusher"));
+	bRoomArena = FParse::Param(FCommandLine::Get(), TEXT("AI003Arena"));
 	ClientID = LoadOrCreateClientId();
 
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
@@ -168,6 +169,10 @@ void UNetSyncSubsystem::SendJoin()
 	Body->SetStringField(TEXT("client"), TEXT("ue5"));
 	Body->SetStringField(TEXT("name"), TEXT("UE5Player"));
 	Body->SetStringField(TEXT("clientId"), ClientID);
+	if (bRoomArena)
+	{
+		Body->SetStringField(TEXT("sync"), TEXT("arena"));
+	}
 	Send(TEXT("join"), Body);
 }
 
@@ -251,6 +256,14 @@ void UNetSyncSubsystem::HandleMessage(const FString& Message)
 		if (Root->TryGetObjectField(TEXT("body"), Body) && Body != nullptr)
 		{
 			ApplyRoomFrame(*Body);
+		}
+	}
+	else if (Type == TEXT("room.arena.snap") || Type == TEXT("room.arena.delta"))
+	{
+		const TSharedPtr<FJsonObject>* Body = nullptr;
+		if (Root->TryGetObjectField(TEXT("body"), Body) && Body != nullptr)
+		{
+			ApplyArenaSnapshot(*Body);
 		}
 	}
 	else if (Type == TEXT("room.left"))
@@ -407,16 +420,27 @@ bool UNetSyncSubsystem::Tick(float DeltaSeconds)
 		}
 		else if (bRoomActive)
 		{
-			// Stay a few ticks ahead of the server; catch up after a hitch.
-			const int32 PredictionAhead = 3;
-			const int32 Desired = ServerTick + PredictionAhead;
-			int32 Guard = 0;
-			while (PredictedTick < Desired && Guard++ < 8)
+			// Frame-sync rooms predict a few ticks ahead; arena rooms follow snapshots.
+			if (!bRoomArena)
 			{
-				PredictTick();
+				const int32 PredictionAhead = 3;
+				const int32 Desired = ServerTick + PredictionAhead;
+				int32 Guard = 0;
+				while (PredictedTick < Desired && Guard++ < 8)
+				{
+					PredictTick();
+				}
 			}
 
-			if (Now >= NextRoomSendAt)
+			if (bRoomArena)
+			{
+				if (Now >= NextRoomSendAt)
+				{
+					NextRoomSendAt = Now + RoomSendInterval;
+					SendArenaCmd(ReadRoomCommand());
+				}
+			}
+			else if (Now >= NextRoomSendAt)
 			{
 				NextRoomSendAt = Now + RoomSendInterval;
 				PredictTick();
@@ -456,6 +480,10 @@ void UNetSyncSubsystem::SendRoomEnter()
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("name"), TEXT("UE5Player"));
 	Body->SetStringField(TEXT("clientId"), ClientID);
+	if (bRoomArena)
+	{
+		Body->SetStringField(TEXT("sync"), TEXT("arena"));
+	}
 
 	FString RoomName;
 	if (FParse::Value(FCommandLine::Get(), TEXT("AI003RoomName="), RoomName) && !RoomName.IsEmpty())
@@ -466,6 +494,63 @@ void UNetSyncSubsystem::SendRoomEnter()
 	Send(TEXT("room.enter"), Body);
 }
 
+void UNetSyncSubsystem::SendArenaCmd(const FRoomCommand& Command)
+{
+	auto Body = MakeShared<FJsonObject>();
+	ArenaSeq++;
+	Body->SetNumberField(TEXT("seq"), ArenaSeq);
+	Body->SetNumberField(TEXT("msec"), 50);
+	Body->SetNumberField(TEXT("yaw"), 0);
+	Body->SetNumberField(TEXT("pitch"), 0);
+	Body->SetNumberField(TEXT("forward"), Command.DZ);
+	Body->SetNumberField(TEXT("side"), Command.DX);
+	Body->SetNumberField(TEXT("up"), 0);
+	Body->SetNumberField(TEXT("buttons"), Command.bAttack ? 1 : 0);
+	Send(TEXT("room.arena.cmd"), Body);
+}
+
+void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
+{
+	double Seq = 0.0;
+	Body->TryGetNumberField(TEXT("seq"), Seq);
+
+	const TArray<TSharedPtr<FJsonValue>>* Players = nullptr;
+	if (Body->TryGetArrayField(TEXT("players"), Players) && Players != nullptr)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Players)
+		{
+			const TSharedPtr<FJsonObject> Entry = Value->AsObject();
+			if (!Entry.IsValid())
+			{
+				continue;
+			}
+			int32 Id = 0;
+			Entry->TryGetNumberField(TEXT("id"), Id);
+			const TArray<TSharedPtr<FJsonValue>>* Origin = nullptr;
+			if (Entry->TryGetArrayField(TEXT("origin"), Origin) && Origin != nullptr && Origin->Num() == 3)
+			{
+				const double X = (*Origin)[0]->AsNumber() / 1000.0;
+				const double Z = (*Origin)[2]->AsNumber() / 1000.0;
+				ArenaOrigins.Add(Id, FVector(X, Z, 0.0));
+				if (Id == ArenaSlot + 1)
+				{
+					RoomLocalX = X;
+					RoomLocalZ = Z;
+					if (AWorldCharacter* Character = LocalCharacter())
+					{
+						FVector Location = RoomToWorld(X, Z);
+						Location.Z = Character->GetActorLocation().Z;
+						Character->SetActorLocation(Location);
+					}
+				}
+			}
+		}
+	}
+
+	TSharedPtr<FJsonObject> Ack = MakeShared<FJsonObject>();
+	Ack->SetNumberField(TEXT("seq"), Seq);
+	Send(TEXT("room.arena.ack"), Ack);
+}
 void UNetSyncSubsystem::SendRoomInput(int32 Tick, const FRoomCommand& Command)
 {
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
@@ -573,6 +658,11 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 
 	Body->TryGetStringField(TEXT("playerId"), PlayerId);
 	Body->TryGetStringField(TEXT("roomId"), RoomId);
+	FString SyncMode;
+	if (Body->TryGetStringField(TEXT("sync"), SyncMode) && SyncMode == TEXT("arena"))
+	{
+		bRoomArena = true;
+	}
 
 	int32 TickRate = 20;
 	Body->TryGetNumberField(TEXT("tickRate"), TickRate);
@@ -583,6 +673,7 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 	if (Body->TryGetObjectField(TEXT("state"), State) && State != nullptr)
 	{
 		(*State)->TryGetNumberField(TEXT("hp"), RoomHP);
+		(*State)->TryGetNumberField(TEXT("slot"), ArenaSlot);
 	}
 	Body->TryGetNumberField(TEXT("tick"), RoomTick);
 
