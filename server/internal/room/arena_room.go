@@ -64,6 +64,7 @@ func (a *ArenaRoom) Leave(id string) {
 }
 
 func (a *ArenaRoom) HasOnline(id string) bool { return a.room.HasOnline(id) }
+func (a *ArenaRoom) Has(id string) bool       { return a.room.Has(id) }
 func (a *ArenaRoom) Count() int               { return a.room.Count() }
 func (a *ArenaRoom) Tick() uint64             { return a.room.Tick() }
 func (a *ArenaRoom) EmptyFor() int            { return a.room.EmptyFor() }
