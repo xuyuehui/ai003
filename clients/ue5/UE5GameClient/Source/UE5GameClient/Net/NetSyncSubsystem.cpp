@@ -677,6 +677,14 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 		}
 		// Attack whenever in range; the server cooldown gates the swing.
 		Command.bAttack = NearestDist <= 300.f;
+		{
+			static int DebugBot = 0;
+			if (DebugBot < 6)
+			{
+				DebugBot++;
+				UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] bot dist=%.0f dx=%d dz=%d attack=%d remotes=%d"), NearestDist, Command.DX, Command.DZ, Command.bAttack ? 1 : 0, RoomRemotes.Num());
+			}
+		}
 		return Command;
 	}
 
@@ -839,6 +847,14 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 		return;
 	}
 	RoomFighters = Players->Num();
+	{
+		static int DebugFrames2 = 0;
+		if (DebugFrames2 < 5)
+		{
+			DebugFrames2++;
+			UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] frame players=%d remotes=%d"), RoomFighters, RoomRemotes.Num());
+		}
+	}
 
 	TSet<FString> Seen;
 	for (const TSharedPtr<FJsonValue>& Entry : *Players)
