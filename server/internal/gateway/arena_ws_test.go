@@ -125,3 +125,54 @@ func waitArenaSnapshot(t *testing.T, conn messageReader, timeout time.Duration) 
 	}
 	return room.Delta{}, false
 }
+func TestArenaRoomCmdMovesPlayer(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	conn := dial(t, httpServer.URL)
+	readWelcome(t, conn)
+	enter, _ := NewMessage("room.enter", 1, map[string]string{"name": "mover", "sync": "arena"})
+	if err := conn.WriteJSON(enter); err != nil {
+		t.Fatalf("enter: %v", err)
+	}
+	for {
+		var msg Message
+		if err := conn.ReadJSON(&msg); err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if msg.Type == "room.entered" {
+			break
+		}
+	}
+
+	cmd, _ := NewMessage("room.arena.cmd", 2, room.Cmd{Seq: 1, Msec: 50, Forward: 1})
+	if err := conn.WriteJSON(cmd); err != nil {
+		t.Fatalf("cmd: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var msg Message
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("deadline: %v", err)
+		}
+		if err := conn.ReadJSON(&msg); err != nil {
+			t.Fatalf("read snap: %v", err)
+		}
+		if msg.Type != "room.arena.snap" && msg.Type != "room.arena.delta" {
+			continue
+		}
+		var delta room.Delta
+		if err := json.Unmarshal(msg.Body, &delta); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, p := range delta.Players {
+			if p.Mask&room.FieldOrigin != 0 && p.Origin[2] > 0 {
+				return
+			}
+		}
+	}
+	t.Fatal("player never moved; arena cmd path is broken")
+}
