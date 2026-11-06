@@ -180,3 +180,20 @@ go run ./cmd/worldgen -out ..\world
 - 断言：双端同房（players=2）、tick 前进、两张截图非空；
   arena 房间没有帧同步的 room.frame/attack 指标，相关断言跳过
 - 产物：`artifacts/demo/room-unity.png`、`room-ue5.png`、`room-compare.png`、`room.json`
+
+## 可信赖 UDP（RUDP）房间通道
+
+房间同步（frame 与 arena）优先走可靠 UDP，WebSocket 保留为大厅/世界同步与自动回退。
+
+- 服务端：`-udp`（默认 `127.0.0.1:8081`，`AI003_UDP_ADDR`）；空值关闭 UDP
+- 握手：WS `room.enter` 的响应带 `udp: {addr, token}`；客户端向该地址发送 RUDP hello（type=3，JSON `{"token":...}`）
+- 包头（28 字节，小端）：magic `A3RU`、version、type、session、seq、ack、len、CRC32
+- 类型：1=data、2=ack、3=hello；消息按 MTU 分片（4 字节 fragment 头：msgId/index/count）
+- 可靠性：逐包 ACK、RTO 120 ms 指数退避、最多 12 次重传、乱序重排、重复抑制
+- ACK 包**复用当前发送序号**，不消耗流序号（否则丢一个 ACK 会造成永久空洞）
+- 绑定成功后该房间的订阅 send 切换到 RUDP；客户端把 room.input / arena.cmd / arena.ack 等走 UDP
+- 客户端实现：Unity `RudpTransport`（C#）、UE `FRudpTransport`（C++），协议字段一致
+
+验证：`go test ./internal/rudp`（丢包/重复/乱序/6000 字节分片）、
+`TestRoomUDPHandshakeAndArenaSnapshots`、`TestFrameRoomUDPFramesContainBothPlayers`，
+以及 `demo-room`（frame 与 `-Sync arena`）、`demo-hub`、PlayMode、UE world smoke。
