@@ -170,3 +170,13 @@ go run ./cmd/worldgen -out ..\world
 客户端行为：本地立即预测自己的 usercmd；收到快照后回到权威位置并重放
 `seq > ack` 的未确认 cmd；远端玩家按快照插值/外推。
 丢包/乱序/重复由服务端 seq 去重与客户端 ack 单调性处理。
+
+### demo-room 的 arena 模式
+
+`scripts\demo-room.cmd -Sync arena` 会用竞技场同步跑同一套双端截图流程：
+
+- Unity：`AI003_ROOM=0`、`AI003_ARENA=1`，由 `CaptureRoom` 创建 `ArenaClient`
+- UE：追加 `-AI003Arena`
+- 断言：双端同房（players=2）、tick 前进、两张截图非空；
+  arena 房间没有帧同步的 room.frame/attack 指标，相关断言跳过
+- 产物：`artifacts/demo/room-unity.png`、`room-ue5.png`、`room-compare.png`、`room.json`
