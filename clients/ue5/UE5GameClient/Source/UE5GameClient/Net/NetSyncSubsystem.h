@@ -99,6 +99,8 @@ private:
 	int32 ArenaSeq = 0;
 	int32 ArenaSlot = 0;
 	TMap<int32, FVector> ArenaOrigins;
+	TMap<int32, FRoomCommand> ArenaPending;
+	void StepArenaLocal(const FRoomCommand& Command);
 	void SendArenaCmd(const FRoomCommand& Command);
 	void ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body);
 	FString RoomId;
