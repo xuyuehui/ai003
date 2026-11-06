@@ -88,7 +88,11 @@ func (m *Manager) MarkOffline(roomID, playerID string) {
 // findPlayerLocked returns the room holding the player (online or offline).
 func (m *Manager) findPlayerLocked(playerID string) (string, bool) {
 	for _, id := range m.order {
-		if m.rooms[id].Has(playerID) {
+		r, ok := m.rooms[id]
+		if !ok {
+			continue // arena rooms live in m.arenas
+		}
+		if r.Has(playerID) {
 			return id, true
 		}
 	}

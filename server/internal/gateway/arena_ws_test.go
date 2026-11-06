@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"ai003/server/internal/room"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestArenaRoomEnterCmdSnapshotAndAck(t *testing.T) {
@@ -175,4 +178,57 @@ func TestArenaRoomCmdMovesPlayer(t *testing.T) {
 		}
 	}
 	t.Fatal("player never moved; arena cmd path is broken")
+}
+func TestArenaExplicitRoomTwoClients(t *testing.T) {
+	server := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	ids := make([]string, 2)
+	conns := make([]*websocket.Conn, 2)
+	for i := 0; i < 2; i++ {
+		conns[i] = dial(t, httpServer.URL)
+		readWelcome(t, conns[i])
+		enter, _ := NewMessage("room.enter", 1, map[string]string{"name": "p", "room": "duel", "sync": "arena"})
+		if err := conns[i].WriteJSON(enter); err != nil {
+			t.Fatalf("enter %d: %v", i, err)
+		}
+		for {
+			var msg Message
+			if err := conns[i].ReadJSON(&msg); err != nil {
+				t.Fatalf("read %d: %v", i, err)
+			}
+			if msg.Type != "room.entered" {
+				continue
+			}
+			var body struct {
+				RoomID string `json:"roomId"`
+			}
+			_ = json.Unmarshal(msg.Body, &body)
+			ids[i] = body.RoomID
+			break
+		}
+	}
+	if ids[0] != "duel" || ids[1] != "duel" {
+		t.Fatalf("room ids = %v", ids)
+	}
+	resp, err := http.Get(httpServer.URL + "/demo")
+	if err != nil {
+		t.Fatalf("demo: %v", err)
+	}
+	defer resp.Body.Close()
+	var demo struct {
+		Rooms []struct {
+			ID      string `json:"id"`
+			Players int    `json:"players"`
+			Sync    string `json:"sync"`
+		} `json:"rooms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&demo); err != nil {
+		t.Fatalf("decode demo: %v", err)
+	}
+	if len(demo.Rooms) != 1 || demo.Rooms[0].Players != 2 || demo.Rooms[0].Sync != "arena" {
+		t.Fatalf("demo rooms = %+v", demo.Rooms)
+	}
 }
