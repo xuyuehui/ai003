@@ -183,6 +183,10 @@ namespace AI003.World
             Player.SeaLevel = Data.SeaLevel;
 
             AttachCharacter(playerObject);
+            if (System.Environment.GetEnvironmentVariable("AI003_ECS_MOTOR") == "1")
+            {
+                playerObject.AddComponent<AI003.Motor.EcsMotorDriver>();
+            }
 
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
