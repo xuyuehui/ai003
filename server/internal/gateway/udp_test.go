@@ -2,10 +2,10 @@ package gateway
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
