@@ -41,6 +41,17 @@ namespace AI003.Net
         private Vector3 _predicted;
         private float _tickTimer;
         private readonly Dictionary<string, RemoteAvatar> _remotes = new Dictionary<string, RemoteAvatar>();
+
+        private struct RemoteInterp
+        {
+            public Vector3 From;
+            public Vector3 To;
+            public float Start;
+            public float Extrapolate;
+        }
+
+        private readonly Dictionary<int, RemoteInterp> _interp = new Dictionary<int, RemoteInterp>();
+        private const float InterpDelay = 0.1f;
         private bool _inRoom;
         private int _debugForward;
         private int _debugSide;
@@ -131,6 +142,7 @@ namespace AI003.Net
         private void Update()
         {
             if (!_inRoom || _connection == null) return;
+            UpdateInterpolatedRemotes();
             _tickTimer += Time.deltaTime;
             if (_tickTimer < 0.05f) return;
             _tickTimer = 0f;
@@ -259,7 +271,14 @@ namespace AI003.Net
             foreach (var pair in snap.Origins)
             {
                 if (pair.Key == localId) continue;
-                UpdateRemote(pair.Key.ToString(), pair.Value);
+                Vector3 previous = _interp.TryGetValue(pair.Key, out RemoteInterp old) ? old.To : pair.Value;
+                _interp[pair.Key] = new RemoteInterp
+                {
+                    From = previous,
+                    To = pair.Value,
+                    Start = Time.time,
+                    Extrapolate = 0f
+                };
             }
 
             _connection.Send(new Envelope { Type = "room.arena.ack", Seq = _connection.NextSeq(), Body = JObject.FromObject(new { seq }) });
@@ -276,16 +295,35 @@ namespace AI003.Net
             };
         }
 
-        private void UpdateRemote(string id, Vector3 position)
+        private void UpdateRemote(int id, Vector3 position)
         {
-            if (_remotes.TryGetValue(id, out RemoteAvatar avatar) && avatar != null)
+            if (_remotes.TryGetValue(id.ToString(), out RemoteAvatar avatar) && avatar != null)
             {
-                avatar.transform.position = Vector3.Lerp(avatar.transform.position, position, 0.2f);
+                avatar.transform.position = position;
                 return;
             }
             GameObject prefab = Resources.Load<GameObject>("Characters/KenneyProtagonists/Player");
             if (prefab == null) return;
-            _remotes[id] = RemoteAvatar.Create(prefab, position, 0f, "Arena_" + id);
+            _remotes[id.ToString()] = RemoteAvatar.Create(prefab, position, 0f, "Arena_" + id);
+        }
+
+        private void UpdateInterpolatedRemotes()
+        {
+            foreach (var pair in _interp)
+            {
+                RemoteInterp state = pair.Value;
+                float elapsed = Time.time - state.Start;
+                float t = Mathf.Clamp01(elapsed / InterpDelay);
+                Vector3 position = Vector3.Lerp(state.From, state.To, t);
+                if (elapsed > InterpDelay)
+                {
+                    // Extrapolate up to 200 ms using the last segment velocity.
+                    Vector3 velocity = (state.To - state.From) / InterpDelay;
+                    float extra = Mathf.Min(elapsed - InterpDelay, 0.2f);
+                    position = state.To + velocity * extra;
+                }
+                UpdateRemote(pair.Key, position);
+            }
         }
     }
 }

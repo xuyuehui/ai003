@@ -94,3 +94,39 @@ func TestArenaRoomRepeatsLastCmdOnPacketLoss(t *testing.T) {
 			first.Players[0].Origin, a.SnapshotFor("a").Players[0].Origin)
 	}
 }
+func TestArenaRoomCombatAndReconnect(t *testing.T) {
+	a := NewArena(8)
+	a.Enter("a", "A")
+	a.Enter("b", "B")
+
+	// Walk A towards B (slot 0 at 0,0; slot 1 at 4000,0) until in attack range.
+	for i := 0; i < 6; i++ {
+		a.SubmitCmd("a", Cmd{Seq: uint32(i + 1), Side: 1})
+		a.Step()
+	}
+	a.SubmitCmd("a", Cmd{Seq: 7, Buttons: 1})
+	snap := a.Step()
+
+	damaged := false
+	for _, p := range snap.Players {
+		if p.ID == 2 && p.Health < 100 {
+			damaged = true
+		}
+	}
+	if !damaged {
+		t.Fatalf("attack did not damage the opponent: %+v", snap.Players)
+	}
+
+	// Reconnect keeps the player in the room with its state.
+	a.MarkOffline("a")
+	if a.HasOnline("a") {
+		t.Fatal("player should be offline")
+	}
+	a.Enter("a", "A")
+	if !a.HasOnline("a") {
+		t.Fatal("reconnect should bring the player back online")
+	}
+	if a.Count() != 2 {
+		t.Fatalf("players = %d, want 2", a.Count())
+	}
+}
