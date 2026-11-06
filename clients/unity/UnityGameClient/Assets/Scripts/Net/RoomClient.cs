@@ -45,6 +45,9 @@ namespace AI003.Net
         private readonly Dictionary<string, Vector3> _lastPositions = new Dictionary<string, Vector3>();
 
         private ConnectionBootstrap _connection;
+        private RudpTransport _udp;
+        private bool _useUdp;
+        private int _lastFrameTick;
         private ThirdPersonController _local;
         private Animator _localAnimator;
         private RoomEcsBridge _bridge;
@@ -299,6 +302,15 @@ namespace AI003.Net
             _debugUntil = Time.unscaledTime + Mathf.Max(0.05f, seconds);
         }
 
+        private void SendRoom(Envelope envelope)
+        {
+            if (_useUdp && _udp != null && _udp.Active)
+            {
+                _udp.Send(envelope);
+                return;
+            }
+            if (_connection != null) _connection.Send(envelope);
+        }
         private void HandleMessage(Envelope envelope)
         {
             switch (envelope.Type)
@@ -325,6 +337,15 @@ namespace AI003.Net
             bool wasInRoom = InRoom;
             _playerId = body["playerId"]?.ToString();
             RoomId = body["roomId"]?.ToString() ?? "";
+            var udp = body["udp"] as JObject;
+            if (udp != null && udp["addr"] != null)
+            {
+                _udp = GetComponent<RudpTransport>();
+                if (_udp == null) _udp = gameObject.AddComponent<RudpTransport>();
+                _udp.Message += HandleMessage;
+                _udp.Connect(udp["addr"].ToString(), udp["token"]?.ToString() ?? "");
+                _useUdp = true;
+            }
             _tickRate = body["tickRate"]?.Value<int>() ?? 20;
             _sendInterval = 1f / Mathf.Max(1, _tickRate);
             _arenaHalfMeters = (body["arenaHalfMM"]?.Value<float>() ?? 20000f) / 1000f;
@@ -385,7 +406,10 @@ namespace AI003.Net
         {
             if (!InRoom || body == null) return;
 
-            Tick = body["tick"]?.Value<int>() ?? Tick;
+            int frameTick = body["tick"]?.Value<int>() ?? Tick;
+            if (frameTick <= _lastFrameTick) return;
+            _lastFrameTick = frameTick;
+            Tick = frameTick;
             var players = body["players"] as JArray;
             if (players == null) return;
 
@@ -616,7 +640,7 @@ namespace AI003.Net
                 ["dz"] = command.DZ,
                 ["buttons"] = command.Attack ? 1 : 0
             };
-            _connection.Send(new Envelope { Type = "room.input", Seq = _connection.NextSeq(), Body = body });
+            SendRoom(new Envelope { Type = "room.input", Seq = 0, Body = body });
         }
 
         private void AddPopup(Vector3 world, string text)
