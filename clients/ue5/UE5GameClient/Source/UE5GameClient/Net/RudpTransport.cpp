@@ -111,6 +111,25 @@ void FRudpTransport::SendPacket(uint8 Type, const TArray<uint8>& Payload)
 	P.SentAt = FPlatformTime::Seconds();
 }
 
+
+void FRudpTransport::SendAck()
+{
+	if (!Socket || !Remote.IsValid()) return;
+	// ACKs reuse the last data sequence number so they never create gaps in the
+	// reliable stream (matching the Go implementation).
+	TArray<uint8> Packet;
+	Packet.SetNumZeroed(HeaderSize);
+	WriteU32(Packet, 0, Magic);
+	Packet[4] = Version;
+	Packet[5] = 2;
+	WriteU32(Packet, 6, Session);
+	WriteU32(Packet, 10, SendSeq);
+	WriteU32(Packet, 14, LastAck);
+	WriteU32(Packet, 18, 0);
+	WriteU32(Packet, 24, Crc32(Packet.GetData(), 24));
+	int32 Sent = 0;
+	Socket->SendTo(Packet.GetData(), Packet.Num(), Sent, *Remote);
+}
 void FRudpTransport::Send(const FString& Json)
 {
 	if (!IsActive() || Json.IsEmpty()) return;
@@ -176,7 +195,20 @@ void FRudpTransport::HandlePacket(const TArray<uint8>& Packet, TArray<FString>& 
 	const uint32 Ack = ReadU32(Packet.GetData(), 14);
 	const int32 Len = Packet[22] | (Packet[23] << 8);
 	if (Ack != 0) Unacked.Remove(Ack);
-	if (Type == 2) return;
+	if (Type == 2)
+	{
+		if (Seq == RecvNext)
+		{
+			Accept(Packet, Len, OutMessages);
+			while (TArray<uint8>* Next = Reorder.Find(RecvNext))
+			{
+				TArray<uint8> Copy = *Next;
+				Reorder.Remove(RecvNext);
+				Accept(Copy, Copy.Num() - HeaderSize, OutMessages);
+			}
+		}
+		return;
+	}
 
 	LastAck = Seq;
 	if (Seq == RecvNext)
@@ -193,7 +225,7 @@ void FRudpTransport::HandlePacket(const TArray<uint8>& Packet, TArray<FString>& 
 	{
 		Reorder.Add(Seq, Packet);
 	}
-	SendPacket(2, TArray<uint8>());
+	SendAck();
 }
 
 void FRudpTransport::Accept(const TArray<uint8>& Packet, int32 Length, TArray<FString>& OutMessages)

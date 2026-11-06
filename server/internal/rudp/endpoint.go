@@ -232,7 +232,18 @@ func (e *Endpoint) handleLocked(pkt []byte) [][]byte {
 	}
 
 	if typ == typeAck {
-		return nil
+		if seq == e.recvNext {
+			e.recvNext++
+			for {
+				next, ok := e.reorder[e.recvNext]
+				if !ok {
+					break
+				}
+				delete(e.reorder, e.recvNext)
+				e.acceptLocked(e.recvNext, next)
+			}
+		}
+		return e.takeDeliveredLocked()
 	}
 
 	payload := pkt[headerSize:]

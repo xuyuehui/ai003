@@ -95,6 +95,7 @@ func TestFrameRoomUDPFramesContainBothPlayers(t *testing.T) {
 					if json.Unmarshal(msg.Body, &frame) != nil {
 						continue
 					}
+					t.Logf("frame bytes=%d players=%d", len(msg.Body), len(frame.Players))
 					if len(frame.Players) != 2 {
 						t.Fatalf("client %d frame players = %d, want 2", i, len(frame.Players))
 					}

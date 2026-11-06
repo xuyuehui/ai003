@@ -23,6 +23,7 @@ public:
 
 private:
 	void SendPacket(uint8 Type, const TArray<uint8>& Payload);
+	void SendAck();
 	void HandlePacket(const TArray<uint8>& Packet, TArray<FString>& OutMessages);
 	void Accept(const TArray<uint8>& Packet, int32 Length, TArray<FString>& OutMessages);
 	void Deliver(const TArray<uint8>& Data, int32 Offset, int32 Length, TArray<FString>& OutMessages);
