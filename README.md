@@ -45,7 +45,13 @@
 # 4) 指标回归：首次生成基线，之后每次对比
 .\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
 .\scripts\demo-scenario.cmd -Seconds 8
+
+# 5) 竞技场（Quake III 同步）无头演示
+.\scripts\demo-arena.cmd
 ```
+
+房间消息默认走**可信赖 UDP**（`127.0.0.1:8081`），WebSocket 保留为大厅/世界同步与回退；
+`demo-room`（frame 与 `-Sync arena`）覆盖这条链路，`demo-scenario` / `demo-arena` 仍走 WebSocket。
 
 输出包含：两端是否进同一房间、收到的帧数、最大 tick 间隔、命中/死亡事件、
 `/demo` 的消息量/字节量/房间帧数。这条链路完全不依赖 Unity 或 UE，可在 CI 里跑
@@ -64,14 +70,14 @@
 
 ![Unity vs UE5](docs/images/demo-compare.png)
 
-脚本会打印两帧的亮度与像素差异（当前 `Unity 108.6 / UE 106.1`，平均差 `7.2/255`，
-95.6% 像素差 ≤24），并输出差分热力图：
+脚本会打印两帧的亮度与像素差异（当前 `Unity 108.4 / UE 106.6`，亮度差 `1.8/255`，
+平均差 `6.6/255`，`98.7%` 像素差 ≤24），并输出差分热力图：
 
 ![Unity vs UE5 diff](docs/images/demo-diff.png)
 
 热力图中黑色表示一致、红/黄表示差异大。这套对照还抓出并验证修复了一个真问题：
 UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地形左右镜像；
-现已改为 `(x, −z, y)`，平均像素差从 `11.6` 降到 `7.2`、≤24 占比从 `88%` 升到 `95.6%`。
+现已改为 `(x, −z, y)`，平均像素差从 `11.6` 降到 `6.6`、≤24 占比从 `88%` 升到 `98.7%`。
 `demo-compare` 支持阈值（`-MaxBrightnessDelta 8 -MinWithin24 80`），
 `smoke-all -WithCompare` 会用这组阈值做回归。
 
@@ -84,7 +90,16 @@ UE 原先用 `(x, z, y)` 映射 Unity 坐标，行列式为负（反射），地
 一条命令完成：起网关 → Unity 以 `AI003_ROOM=1` 进房并截图 → UE 以 `-AI003Room -AI003RoomBot`
 进入同一房间并截图 → 合成 [docs/images/demo-room.png](docs/images/demo-room.png)，最后打印
 `/demo` 计数。Unity 侧由 `CaptureRoom` 自动等"两个 fighter"后截图，UE 侧由
-`-AI003RoomShot` 在房间内自截，不依赖窗口焦点。
+`-AI003RoomShot` 在房间内自截，不依赖窗口焦点。房间消息默认走**可信赖 UDP**（8081）。
+
+竞技场版本（Quake III 同步，同样双端截图）：
+
+```powershell
+.\scripts\demo-room.cmd -Sync arena
+```
+
+arena 下发 `room.arena.cmd`，断言双端同房（players=2）、tick 前进、两张截图非空；
+没有帧同步的 `room.frame`/attack 指标，相关断言自动跳过。
 
 ![Unity vs UE5 room](docs/images/demo-room.png)
 
@@ -104,7 +119,7 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   - 系统：`FighterViewSystem`（`SimulationSystemGroup`）负责远端插值、攻击前冲、受击闪红、
     死亡倒地、动画参数与 Transform 写回
   - `RoomEcsBridge`：把网络层的房间/世界快照写成实体，是 MonoBehaviour 与 ECS 的边界
-- 网络（WebSocket/协议解析）、地形、角色控制器仍保留在 MonoBehaviour：
+- 网络（WebSocket 大厅/世界同步 + **RUDP 房间通道**）、地形构建、角色控制器仍在 MonoBehaviour：
   ECS 负责"状态 + 表现"，I/O 与物理沿用 Unity 既有实现（混合架构，DOTS 常见做法）
 - **预测**：`PredictionState`/`PredictionInput`/`ServerSnapshot`/`PredictionStep`/
   `PredictionHistoryElement` + `LocalPredictionJob`（Burst `IJobEntity`），按 20 Hz 整数毫米
@@ -112,6 +127,10 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 - **批处理**：`FighterStateUpdateJob`（Burst `IJobEntity`）负责计时、远端插值与倒地，
   `FighterViewSystem` 只做表现。PlayMode 基准（4000 远端，10 次平均）：
   **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
+- **ECS 权威位移（可选）**：`AI003_ECS_MOTOR=1` 时 `MotorStepJob` 拥有位置/重力/跳跃/地形钳制，
+  GO 只做视图；`demo-room` 与 `demo-hub` 在该开关下均验证通过
+- **ECS 地形碰撞**：`TerrainHeightField` + `TerrainClampSystem`（Burst）把带 `TerrainBody`
+  的实体钳制到高度图；PlayMode `TerrainBodyIsClampedToHeightField` 覆盖
 - **Entities Graphics（保留为可选路径）**：`com.unity.entities.graphics@6.6.0`
   - URP Lit + 运行时实体可渲染（[探针](docs/images/ecs-graphics-probe.png)）
   - 自定义地形 shader：手动创建的实体可以正常渲染——1 个、16 个、甚至 **256 个**
@@ -209,6 +228,25 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 > 上图是开发期渲染产物，用 `scripts/smoke-unity.cmd` / `scripts/smoke-ue5-world.cmd` 重新生成。
 > 两端光照/材质仍在打磨，见"已知差异"。
 
+**里程碑 4：竞技场房间 + 可信赖 UDP 同步**（已完成）
+
+- **两种房间并存**：`sync=frame`（帧同步，默认）与 `sync=arena`（Quake III 风格，独立池 `arena3-N`），
+  匹配互不混用；`room.list`/`/demo`/dashboard 均带 `sync` 字段
+- **arena 协议**：客户端发 `room.arena.cmd`（seq/msec/yaw/pitch/forward/side/up/buttons），
+  服务器每 tick 执行一条（队列空复用最后一条），回 `room.arena.snap`（全量）或
+  `room.arena.delta`（字段掩码：origin/velocity/health/yaw/flags），客户端用 `room.arena.ack` 推进基线
+- **客户端预测**：Unity/UE 都本地立即预测，收到快照后回到权威位置并重放 `seq > ack` 的未确认 cmd；
+  远端按快照插值，Unity 额外有 200 ms 外推，UE `ARemotePlayer` 在 200 ms 无快照时按最后速度外推
+- **房间消息走 RUDP**：WS `room.enter` 返回 `udp{addr,token}`，客户端 hello 绑定后
+  `room.input` / `room.arena.cmd` / `room.arena.ack` 与 `room.frame` / `snap` / `delta` 全部走可靠 UDP；
+  握手失败或未下发 UDP 时自动回退 WebSocket
+- **RUDP 能力**：序号、逐包 ACK、RTO 120 ms 指数退避、最多 12 次重传、乱序重排、重复抑制、
+  消息分片/重组（MTU 1200）；ACK 复用当前发送序号，避免丢 ACK 造成永久空洞
+- **无头演示**：`scripts\demo-arena.cmd` 起网关 + Go arena 客户端，输出 `artifacts/demo/arena.json`
+- **双端演示**：`demo-room` 默认走 UDP；`-Sync arena` 跑竞技场双端截图
+- **验证**：`go test ./internal/rudp`、`TestRoomUDPHandshakeAndArenaSnapshots`、
+  `TestFrameRoomUDPFramesContainBothPlayers`、PlayMode、`demo-room`（frame+arena）、`demo-hub`、UE world smoke
+
 此前的环境骨架（WebSocket `ping/pong`）仍然保留并通过测试：
 
 - Unity 批处理模式（编辑器内 C# 联网）→ Go
@@ -223,16 +261,18 @@ ai003/
 │  ├─ cmd/server/              网关进程：/healthz + /ws
 │  ├─ cmd/pingclient/          命令行冒烟客户端
 │  ├─ cmd/worldgen/            世界生成器（导出 world/ 数据）
-│  └─ internal/gateway, worldgen   网关与世界生成 + 单元测试
+│  ├─ cmd/arenaclient/         无头竞技场客户端（demo-arena 用）
+│  └─ internal/gateway, room, rudp, worldgen   网关/房间/RUDP/世界生成 + 单元测试
 ├─ world/                      生成的世界数据（world.json + 二进制数组 + preview.png）
 ├─ clients/unity/UnityGameClient/   Unity 6 工程（URP 17.6）
-│  ├─ Assets/Scripts/Net/      GatewayClient / ConnectionBootstrap
+│  ├─ Assets/Scripts/Net/      GatewayClient / ConnectionBootstrap / RoomClient / ArenaClient / RudpTransport
 │  ├─ Assets/Scripts/World/    WorldData / WorldTerrain / WorldBootstrap
 │  ├─ Assets/Scripts/Player/   ThirdPersonController / OrbitCamera
 │  ├─ Assets/Editor/           建场景、世界冒烟、离屏渲染截图
 │  └─ Assets/Tests/PlayMode/   联网 + 世界/角色物理测试
 ├─ clients/ue5/UE5GameClient/  UE 5.8 C++ 工程
 │  ├─ Source/UE5GameClient/World/   WorldData / WorldTerrainActor / WorldCharacter / WorldGameMode
+│  ├─ Source/UE5GameClient/Net/     NetSyncSubsystem / RudpTransport / RemotePlayer
 │  ├─ Scripts/setup_assets.py       生成 /Game/AI003 材质（Python commandlet）
 │  └─ WorldData/                    世界数据副本
 ├─ protocol/                   三端共享报文定义
@@ -442,6 +482,8 @@ ue5-world  PASS
 | `scripts/check-ue-input.ps1` | 用 `-AI003InputProbe` 自动验证 UE 相机相对输入映射（8 方向查表） |
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示；`-UpdateBaseline` 更新 `demo/smoke-baseline.json` |
 | `scripts/demo-hub.ps1` | 一条命令跑 scenario + compare + room，汇总生成 `artifacts/demo/report.md` 与 `report.json`（含基线对比） |
+| `scripts/demo-arena.ps1` | 无头竞技场演示：起网关 + Go arena 客户端，验证 usercmd/快照/delta/ack，输出 `artifacts/demo/arena.json` |
+| `scripts/bake-unity-terrain.ps1` | 重建 256 chunk 地形资产并触发 SubScene 烘焙（`RunBatch` 状态机） |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
 Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
@@ -454,9 +496,12 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | --- | --- |
 | HTTP 健康检查 | `http://127.0.0.1:8080/healthz` |
 | 演示指标（JSON） | `http://127.0.0.1:8080/demo` |
-| WebSocket 网关 | `ws://127.0.0.1:8080/ws` |
+| 状态面板 | `http://127.0.0.1:8080/dashboard` |
+| WebSocket 网关（大厅/世界同步/回退） | `ws://127.0.0.1:8080/ws` |
+| 房间可信赖 UDP | `udp://127.0.0.1:8081`（`-udp` / `AI003_UDP_ADDR`，空值关闭） |
 
-改端口：`.\server\bin\ai003-server.exe -addr 0.0.0.0:9000`，客户端用 `AI003_WS_URL` 跟随。
+改端口：`.\server\bin\ai003-server.exe -addr 0.0.0.0:9000 -udp 0.0.0.0:9001`，
+客户端用 `AI003_WS_URL` 跟随（UDP 地址由 `room.entered` 下发，无需单独配置）。
 
 ## 已知差异 / 待补
 
@@ -475,16 +520,18 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | UE 光照观感 | 色调偏灰、角色背光面偏暗，天空/雾还在调 | 对齐 Unity 的曝光与补光，必要时加后处理体积 |
 | 水下物理 | Unity 有游泳浮力，UE 仍是"水下行走" | UE 补 `MOVE_Swimming` 或自定义浮力 |
 | 地形精度 | 4 m 网格、平滑着色，近看缺少细节 | 加贴图/法线细节或提高分辨率 + LOD |
-| 世界加载 | 一次性建 64 块，2 km 内全量 | 流式加载 / 分块 LOD，支撑更大世界 |
+| 世界加载 | Unity 有 128 m chunk 流式 + LOD；UE 8×8 chunk 懒加载 + 三级 LOD（≤450/900/1400 m） | 已满足演示需求 |
+| 房间传输 | 房间消息默认走**可信赖 UDP**（序号/ACK/重传/乱序/去重/分片），WS 保留为大厅/世界同步与回退 | 可继续加拥塞控制/加密 |
+| 纯 ECS 蒙皮 | 仍是“ECS 驱动骨骼 + SkinnedMeshRenderer 蒙皮”；Entities Graphics 变形注册在 6.6 下未打通 | 需要内嵌包加日志或改 baker |
+| ECS 角色位移 | `AI003_ECS_MOTOR=1` 可选；默认仍是 GameObject `CharacterController` | 稳定后可切默认 |
 
 ## 接下来（按技术演示排序）
 
-1. **双端同机位对照**：固定相机、统一光照/后处理，一键生成 Unity vs UE 对比图；
-2. **指标回归**：把 `/demo` 与 `demo-scenario` 纳入 `smoke-all`/CI，记录帧数、tick 间隔、
-   消息量、事件数基线，回归时对比；
-3. **场景化演示脚本**：地形、同步、预测、重连、战斗各一段可复现操作与截图/GIF；
-4. **世界规模演示**：流式加载/分块 LOD，展示大于 2 km 的世界；
-5. **表现层替换**（可选）：正式竞技场与特效，提升截图观感。
+1. **纯 ECS 蒙皮**：把骨骼/蒙皮完全搬进 Entities Graphics（当前是混合方案，见"已知差异"）；
+2. **ECS 角色位移默认化**：`AI003_ECS_MOTOR` 稳定后替代 GameObject `CharacterController`；
+3. **房间传输增强**：RUDP 拥塞控制、可选加密、UDP 打洞/中继；
+4. **表现层替换**（可选）：正式竞技场场景、模型与 Niagara 特效；
+5. **CI 扩展**：把 `demo-room`（UDP，frame+arena）纳入 `smoke-all` 的固定回归。
 
 ### 竞技场房间（Quake III 风格同步）
 
@@ -492,5 +539,8 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 - 客户端发 `room.arena.cmd`（seq/msec/视角/移动/按键），服务器每 tick 执行一条
 - 快照 `room.arena.snap`/`room.arena.delta` 带 seq 与 ack，delta 用字段掩码压缩
 - 客户端本地预测 + 回滚重放；`room.arena.ack` 推进 delta 基线
+- 远端插值 + 外推（Unity 200 ms；UE `ARemotePlayer` 200 ms 后按最后速度外推，上限 500 ms）
 - 无头演示：`scripts\demo-arena.cmd`（Go arena 客户端，输出 `artifacts/demo/arena.json`）
 - 双端：Unity `ArenaClient`（`AI003_ARENA=1`）；UE `-AI003Arena`
+- 双端截图：`scripts\demo-room.cmd -Sync arena`（走 RUDP，断言 players=2、tick 前进、截图非空）
+- 协议与 RUDP 细节见 [docs/specs/go-server.md](docs/specs/go-server.md)
