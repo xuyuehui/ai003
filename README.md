@@ -6,7 +6,8 @@
 - **Unreal Engine 5 客户端** — `clients/ue5/UE5GameClient`
 - **Go 服务器** — `server`
 
-三端通过同一条 WebSocket JSON 协议通信（见 [protocol/README.md](protocol/README.md)）。
+三端通过同一套 JSON 协议通信：大厅/世界同步走 **WebSocket**，房间同步走**可信赖 UDP**（RUDP），
+两者共用同一份报文定义（见 [protocol/README.md](protocol/README.md)）。
 
 ## 定位：技术演示，不是玩法实现
 
@@ -20,6 +21,8 @@
 | 实时协议演进 | 协议 v1 → v3 文档 + `cmd/democlient` 可脚本回放 |
 | 服务器权威状态同步 | 10 Hz `snapshot` + `/demo` 计数 + HUD |
 | 房间帧同步战斗 | 20 Hz 整数毫米模拟、`room.frame`、帧间隔统计 |
+| 竞技场同步（Quake III） | `room.arena.cmd` / `snap` / `delta` / `ack`、预测回滚、`demo-arena`、`demo-room -Sync arena` |
+| 可信赖 UDP | RUDP 握手/序号/ACK/重传/乱序/去重/分片；丢包与大包测试 + `demo-room` 双端验证 |
 | 客户端预测 / 回滚 | 本地领先 3 ticks，HUD 显示 `pred / corr / 误差` |
 | 断线重连 | 30 s 状态保留，同 `clientId` 回到原房间 |
 | 自动化验证 | `smoke-all`、PlayMode、UE 冒烟、`demo-scenario` + 基线回归、GitHub Actions |
@@ -239,7 +242,7 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   远端按快照插值，Unity 额外有 200 ms 外推，UE `ARemotePlayer` 在 200 ms 无快照时按最后速度外推
 - **房间消息走 RUDP**：WS `room.enter` 返回 `udp{addr,token}`，客户端 hello 绑定后
   `room.input` / `room.arena.cmd` / `room.arena.ack` 与 `room.frame` / `snap` / `delta` 全部走可靠 UDP；
-  握手失败或未下发 UDP 时自动回退 WebSocket
+  绑定成功后房间消息切到 UDP；服务器未下发 `udp` 字段时客户端继续走 WebSocket
 - **RUDP 能力**：序号、逐包 ACK、RTO 120 ms 指数退避、最多 12 次重传、乱序重排、重复抑制、
   消息分片/重组（MTU 1200）；ACK 复用当前发送序号，避免丢 ACK 造成永久空洞
 - **无头演示**：`scripts\demo-arena.cmd` 起网关 + Go arena 客户端，输出 `artifacts/demo/arena.json`
@@ -262,6 +265,7 @@ ai003/
 │  ├─ cmd/pingclient/          命令行冒烟客户端
 │  ├─ cmd/worldgen/            世界生成器（导出 world/ 数据）
 │  ├─ cmd/arenaclient/         无头竞技场客户端（demo-arena 用）
+│  ├─ cmd/democlient/          脚本化回放/演示客户端
 │  └─ internal/gateway, room, rudp, worldgen   网关/房间/RUDP/世界生成 + 单元测试
 ├─ world/                      生成的世界数据（world.json + 二进制数组 + preview.png）
 ├─ clients/unity/UnityGameClient/   Unity 6 工程（URP 17.6）
@@ -335,6 +339,8 @@ ai003/
   - 统计通过 `WorldStats.Describe()`（chunks/verts/colliders/refresh/build）输出，PlayMode 有断言
 - 实测：4 km 世界（1025² 顶点、32²=1024 chunks）在 400 m 测试视野下只构建 **33/1024** 个 chunk、
   8.3k 顶点、3 个 collider；默认 2 km 世界在 2000 m 视野下 256/256、149k 顶点
+- UE 侧按 **8×8 chunk 懒加载**（总计 64 块）+ 三级 LOD（≤450/900/1400 m），超出视野隐藏，
+  日志每 2 s 输出统计（[截图](docs/images/ue-terrain-streaming.png)）
 - 服务端 `GET /world` 返回世界元数据与进程指标（`sizeMeters`、`resolution`、`chunkerMeters`、
   `chunksPerAxis`、数组文件大小、uptime/内存/goroutine），即使客户端不启动也能核对世界规模
 
@@ -369,10 +375,13 @@ UE 的地形/水面/角色材质由 Python 在编辑器里生成一次（`/Game/
 
 | 操作 | 按键 |
 | --- | --- |
-| 移动 | `W A S D` |
+| 移动 | `W A S D`（房间内为相机相对，映射到 8 个协议方向） |
 | 视角 | 鼠标（Esc 释放鼠标，左键重新锁定） |
 | 冲刺 | `Shift` |
-| 跳跃 | `Space` |
+| 跳跃 | `Space`（开放世界） |
+| 攻击 | `Space` / 左 `Ctrl`（仅房间内；Unity 与 UE 都是 `Space`） |
+
+> 房间内 `Space` 是出拳而不是跳跃；开放世界的跳跃仍由 `Space` 触发。
 
 > 房间战斗里 **Unity 与 UE 的 `W A S D` 都是相机相对输入**（`W` 朝相机前方），
 > 会映射到 8 个协议方向；早期是固定世界轴，相机默认朝南时按 `W` 会朝相机跑，方向感相反。
@@ -399,7 +408,7 @@ Unity 与 UE 的移动速度、重力、跳跃高度、斜坡限制都在各自�
 
 ```powershell
 .\scripts\build-server.cmd
-.\server\bin\ai003-server.exe            # 监听 127.0.0.1:8080
+.\server\bin\ai003-server.exe            # HTTP/WS 127.0.0.1:8080，房间 UDP 127.0.0.1:8081
 ```
 
 健康检查与命令行冒烟：
