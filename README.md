@@ -436,8 +436,8 @@ cd server; go run ./cmd/pingclient -n 3  # 期望 SMOKE OK
 ```
 
 然后双击 `UE5GameClient.uproject` 打开编辑器，点 Play 即可进入同一个世界：
-`WorldGameMode` 会加载 `WorldData/`、生成 64 块地形与水面、布置太阳/天空/雾，并把角色
-放在出生点。只想验证连通性时用 `-AI003Smoke`（`SmokeGameInstance` 的 ping 流程）。
+`WorldGameMode` 会加载 `WorldData/`，按 8×8 chunk 懒加载地形（总计 64 块、三级 LOD）与水面、
+布置太阳/天空/雾，并把角色放在出生点。只想验证连通性时用 `-AI003Smoke`（`SmokeGameInstance` 的 ping 流程）。
 
 ### 4. 一键验证
 
