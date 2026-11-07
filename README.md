@@ -182,7 +182,7 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 
 **里程碑 2：服务器权威状态同步**（已完成基础版）
 
-- 协议 **v2**：`join` / `joined` / `move` / `snapshot`，服务器保存每个玩家的权威位置、朝向、
+- 协议 **v3** 的世界同步部分：`join` / `joined` / `move` / `snapshot`，服务器保存每个玩家的权威位置、朝向、
   速度与状态，按 **10 Hz** 广播快照，见 [protocol/README.md](protocol/README.md)
 - 服务器做边界与非法值清洗（位置夹到 ±1024 m、高度 −200..600 m、NaN 归零），
   动画状态（idle/walk/run/jump/swim）也由服务器派生，保证两端表现一致
@@ -206,7 +206,7 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
   伤害数字、死亡倒地变灰、复活恢复；服务器在每次出拳广播 `attack` 事件（落空也有）
 - **断线重连**：客户端持久 `clientId`（Unity `PlayerPrefs` / UE `Saved/ClientId.txt`），
   掉线后状态保留 30 s（离线不可被攻击），期内重连回到原房间并恢复血量/位置/槽位
-- 输入帧广播 `room.input` → `room.frame`；近战规则：3 m 范围、±60° 锥角、25 伤害、
+- 输入帧广播 `room.input` → `room.frame`（默认经 RUDP，见里程碑 4）；近战规则：3 m 范围、±60° 锥角、25 伤害、
   1 s 冷却、100 HP、死亡 3 s 后原地满血复活
 - Unity 用 `RoomClient`（`AI003_ROOM=1` 开启）、UE 用 `NetSyncSubsystem`（`-AI003Room` 开启），
   两端都按服务器下发的常量与帧进行模拟，HUD 显示血量/帧号/人数
