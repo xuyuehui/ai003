@@ -27,11 +27,6 @@ public:
 	/** Feed the newest snapshot; smoothing happens in Tick. */
 	void ApplySnapshot(const FVector& LocationCm, float Yaw, const FString& AnimName);
 
-	/** Mass-driven view: pose/animation come from the entity, no local smoothing. */
-	void SetMassDriven(bool bInMassDriven) { bMassDriven = bInMassDriven; }
-	void SetMassPose(const FVector& Location, float Yaw);
-	void SetMassVisual(const FString& AnimName, bool bInAlive);
-
 	void TriggerAttack();
 	void TriggerHit();
 	void SetAlive(bool bInAlive);
@@ -76,5 +71,4 @@ private:
 	float HitUntil = 0.f;
 	float DeathAt = 0.f;
 	bool bAlive = true;
-	bool bMassDriven = false;
 };

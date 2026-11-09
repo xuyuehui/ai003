@@ -167,25 +167,6 @@ Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6
 
 限制：角色移动仍由 GameObject CharacterController 驱动（ECS 地形碰撞用于 ECS 实体）；蒙皮仍由 Unity SkinnedMeshRenderer 完成。
 
-## UE5 客户端：Mass Entity 架构
-
-UE 端的**远端房间角色**已从“每个玩家一个 Actor 直接驱动”迁移到 **Mass Entity**（UE 的 ECS，
-与 Unity DOTS 对应），本地玩家仍是 `AWorldCharacter`，渲染层保留骨骼视图：
-
-- `Source/UE5GameClient/Mass/FighterMass.h`
-  - `FAI003FighterFragment`：目标/渲染位置、速度、yaw、血量、存活、动画、最后更新时间
-  - `FAI003RemoteFighterTag`：标记房间远端实体
-  - `UAI003FighterInterpProcessor`：100 ms 插值靠近目标；>200 ms 无快照按最后速度外推
-    （上限 500 ms），yaw 最短弧
-- `FighterMassRenderer`：每个实体维护一个 `ARemotePlayer` 视图，把 Mass 的插值结果写入
-  Actor 位置/朝向/动画（视图关闭自身平滑）；实体销毁时同步回收视图
-- `NetSyncSubsystem`：`UpsertRoomFighter` 创建/更新实体，`RoomPositions` 供 bot 选目标与 HUD；
-  attack/hit 事件通过 `FindRoomView` 找视图
-- 模块：`MassEntity` + `MassCore`（`UE5GameClient.Build.cs`），实体管理器来自
-  `UMassEntitySubsystem`
-- 验证：`demo-room`（帧同步）attack **55** / hit **24**；`demo-room -Sync arena` players=2、
-  tick 前进；日志输出 `[AI003][MASS] entity created ...`
-
 ## 已实现的技术点
 
 **里程碑 1：开放世界地形 + 角色跑动**（已完成）
@@ -296,7 +277,6 @@ ai003/
 ├─ clients/ue5/UE5GameClient/  UE 5.8 C++ 工程
 │  ├─ Source/UE5GameClient/World/   WorldData / WorldTerrainActor / WorldCharacter / WorldGameMode
 │  ├─ Source/UE5GameClient/Net/     NetSyncSubsystem / RudpTransport / RemotePlayer
-│  ├─ Source/UE5GameClient/Mass/    FighterMass（fragment/processor）/ FighterMassRenderer
 │  ├─ Scripts/setup_assets.py       生成 /Game/AI003 材质（Python commandlet）
 │  └─ WorldData/                    世界数据副本
 ├─ protocol/                   三端共享报文定义

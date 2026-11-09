@@ -21,8 +21,6 @@ public class UE5GameClient : ModuleRules
 			"Json",
 			"JsonUtilities",
 			"ProceduralMeshComponent",
-			"MassEntity",
-			"MassCore",
 		});
 	}
 }

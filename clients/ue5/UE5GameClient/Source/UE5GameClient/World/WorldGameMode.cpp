@@ -117,7 +117,7 @@ void AWorldGameMode::StartPlay()
 	}
 	else if (bRoomShot)
 	{
-		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginRoomShot, 60.f, false);
+		GetWorldTimerManager().SetTimer(AutomationTimer, this, &AWorldGameMode::BeginRoomShot, 45.f, false);
 	}
 }
 

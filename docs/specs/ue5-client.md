@@ -88,8 +88,7 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 与 Unity 端一致，`W` 始终朝相机前方）。
 - 进房时 `DisableMovement()` 并把 `RoomCenter` 设成角色当前位置；之后按 `room.frame`
   直接 `SetActorLocation`（房间坐标 → `RoomCenter + (x,z)*100cm`）。
-- 远端房间角色由 **Mass Entity** 承载（见 5.3），渲染层仍是 `ARemotePlayer` 视图；
-  动画由帧间位移推导（run/walk/idle）。
+- 远端用 `ARemotePlayer` 显示，动画由帧间位移推导（run/walk/idle）。
 - 世界快照在房间激活时忽略（`ApplySnapshot` 早退），避免同一玩家出现两个化身。
 - HUD 用 `GEngine->AddOnScreenDebugMessage` 显示 `roomId/hp/tick/fighters`。
 - 持久身份：`Saved/ClientId.txt`（首次 `FGuid` 生成），`join`/`room.enter` 携带；
@@ -104,9 +103,8 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 对照截图：`-AI003DemoShot` 用固定机位（spawn − 6 m Y、+3.2 m Z，看向胸口）和
   `artifacts/demo/ue5.png` 输出；曝光由无边界 PostProcessVolume 固定（Histogram，
   min=max=0.8 EV，`AEM_Manual` 会黑帧），供 `scripts/demo-compare.cmd` 合成。
-- 房间截图：`-AI003RoomShot` 在进房 60 s 后由引擎自身截图到
+- 房间截图：`-AI003RoomShot` 在进房 20 s 后由引擎自身截图到
   `artifacts/demo/room-ue5.png` 并退出（不依赖窗口焦点）；`scripts/demo-room.cmd` 使用。
-  延迟留足 Unity 批处理启动时间，避免双端错过同房窗口。
 - 世界尺寸由 `WorldData/world.json` 决定，`scripts/build-world.cmd -Size 4096` 可直接给 UE 换 4 km 世界。
 - 地形流式：8×8 chunk（默认 256 m/块），按玩家距离懒加载并三级 LOD：
   ≤450 m stride1、≤900 m stride2、≤1400 m stride4；超出视野隐藏，远处 LOD 不生成碰撞。
@@ -116,23 +114,7 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   距离阈值以**厘米**为单位（`FVector::Dist2D` 返回 cm）。
 - 光照：Sun 的 `ForwardShadingPriority=1`、Fill 为 0，消除 "multiple directional lights"
   的前向着色警告。
-- 已知限制：单连接只进一个房间（自动匹配）；arena 与 frame 两种房间由服务器 `sync` 字段决定。
-
-### 5.3 Mass Entity 架构（远端房间角色）
-
-- 模块依赖：`MassEntity`、`MassCore`（`UE5GameClient.Build.cs`）；实体管理器来自
-  `UWorld::GetSubsystem<UMassEntitySubsystem>()`。
-- `Mass/FighterMass.h`：`FAI003FighterFragment`（TargetLocation/RenderLocation/Velocity/Yaw/
-  Health/bAlive/Anim/LastUpdate）与 `FAI003RemoteFighterTag`。
-- `UAI003FighterInterpProcessor`：每帧按 100 ms 插值靠近目标；超过 200 ms 无新快照时按最后
-  速度外推（上限 500 ms）；yaw 走最短弧。
-- `Mass/FighterMassRenderer`：为每个实体维护一个 `ARemotePlayer` 视图，把实体插值结果写入
-  Actor 位置/朝向与动画；视图本身关闭了 `ARemotePlayer` 的本地平滑（`SetMassDriven(true)`）。
-- `NetSyncSubsystem` 不再直接 spawn 远端 Actor：`UpsertRoomFighter` 创建/更新实体，
-  `RoomPositions` 供 bot 选目标与 HUD 使用，事件（attack/hit）通过 `FindRoomView` 找视图。
-- 本地玩家仍是 `AWorldCharacter`（Actor），与 Unity 端“本地控制 + ECS 远端表现”的混合架构一致。
-- 验证：`demo-room`（帧同步）attack 55 / hit 24；`demo-room -Sync arena` players=2、tick 前进；
-  UE 日志可见 `[AI003][MASS] entity created ...`。
+- 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
 
 ## 6. 材质
 

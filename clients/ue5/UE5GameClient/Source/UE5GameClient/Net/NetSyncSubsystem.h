@@ -12,7 +12,6 @@ class IWebSocket;
 class ARemotePlayer;
 class FJsonObject;
 class FRudpTransport;
-class AAI003FighterMassRenderer;
 
 /**
  * Gateway state sync for the UE5 client (protocol v2).
@@ -81,15 +80,8 @@ private:
 	FTSTicker::FDelegateHandle TickerHandle;
 
 	TMap<FString, TWeakObjectPtr<ARemotePlayer>> Remotes;
-	TMap<FString, FVector> RoomPositions;
+	TMap<FString, TWeakObjectPtr<ARemotePlayer>> RoomRemotes;
 	TMap<FString, FVector> RoomLastPositions;
-	TWeakObjectPtr<AAI003FighterMassRenderer> MassRenderer;
-
-	void EnsureMassRenderer();
-	void UpsertRoomFighter(const FString& Id, int32 Slot, const FVector& Target, const FVector& Velocity,
-		float Yaw, const FString& Anim, int32 HP, bool bAlive);
-	void RemoveRoomFighter(const FString& Id);
-	ARemotePlayer* FindRoomView(const FString& Id) const;
 
 	FString Endpoint = TEXT("ws://127.0.0.1:8080/ws");
 	FString PlayerId;
