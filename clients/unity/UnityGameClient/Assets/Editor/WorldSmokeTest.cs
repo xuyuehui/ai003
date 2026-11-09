@@ -69,8 +69,8 @@ namespace AI003.EditorTools
             ok &= Check(Mathf.Abs(spawn.y - terrainHeight) < 2f,
                 $"spawn sits on the terrain (spawn {spawn.y:0.0} vs terrain {terrainHeight:0.0})");
 
-            int cellsPerChunk = WorldTerrain.CellsPerChunk;
-            Mesh mesh = WorldTerrain.BuildChunkMesh(data, 0, 0);
+            int cellsPerChunk = (data.Resolution - 1) / WorldTerrain.ChunksPerAxis;
+            Mesh mesh = WorldTerrain.BuildChunkMesh(data, 0, 0, cellsPerChunk);
             int expectedVerts = (cellsPerChunk + 1) * (cellsPerChunk + 1);
             int expectedTris = cellsPerChunk * cellsPerChunk * 2;
             ok &= Check(mesh.vertexCount == expectedVerts, $"chunk vertices {mesh.vertexCount} == {expectedVerts}");
@@ -90,7 +90,7 @@ namespace AI003.EditorTools
                         true, "lighting is created at runtime");
 
             Debug.Log($"[AI003][WORLD] world {data.Meta.name} seed={data.Meta.seed} " +
-                      $"size={data.SizeMeters:0}m res={data.Resolution} chunks={(data.Resolution - 1) / WorldTerrain.CellsPerChunk} " +
+                      $"size={data.SizeMeters:0}m res={data.Resolution} chunks={WorldTerrain.ChunksPerAxis * WorldTerrain.ChunksPerAxis} " +
                       $"spawn=({spawn.x:0},{spawn.y:0},{spawn.z:0})");
             return ok;
         }

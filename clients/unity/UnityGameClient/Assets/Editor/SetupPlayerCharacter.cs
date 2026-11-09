@@ -220,16 +220,6 @@ namespace AI003.EditorTools
                     continue;
                 }
 
-                // Kenney's Idle and Run takes bake opposite HipsCtrl rotations
-                // (-0.707 vs +0.707), which flips the whole character 180° while
-                // running. HipsCtrl is the IK control root, not the body, so drop its
-                // rotation tracks and keep the prefab rest pose; limbs still animate.
-                if ((binding.path == "HipsCtrl" || binding.path == "Root/HipsCtrl") &&
-                    binding.propertyName.StartsWith("m_LocalRotation"))
-                {
-                    continue;
-                }
-
                 var curve = AnimationUtility.GetEditorCurve(source, binding);
                 if (curve != null)
                 {

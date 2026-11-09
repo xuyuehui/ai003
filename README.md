@@ -112,60 +112,17 @@ arena 下发 `room.arena.cmd`，断言双端同房（players=2）、tick 前进�
 .\scripts\demo-hub.cmd                                  # 一键出图 + 报告 + 基线对比
 ```
 
-## Unity 客户端：ECS 架构
+## Unity 客户端
 
-Unity 端已从"每个角色一个 MonoBehaviour 驱动"迁移到 **Entities 6.6（DOTS）**：
+Unity 端保持 **MonoBehaviour** 架构（已回滚 Entities/DOTS 实验）：
 
-- `Assets/Scripts/Ecs/`（asmdef `AI003.Ecs`）：
-  - 组件：`FighterState`（位置/朝向/前冲/受击/倒地）、`LocalFighterTag`、`RemoteFighterTag`、
-    `FighterView`（Transform/Animator/Renderer 引用）、`FighterAnim`
-  - 系统：`FighterViewSystem`（`SimulationSystemGroup`）负责远端插值、攻击前冲、受击闪红、
-    死亡倒地、动画参数与 Transform 写回
-  - `RoomEcsBridge`：把网络层的房间/世界快照写成实体，是 MonoBehaviour 与 ECS 的边界
-- 网络（WebSocket 大厅/世界同步 + **RUDP 房间通道**）、地形构建、角色控制器仍在 MonoBehaviour：
-  ECS 负责"状态 + 表现"，I/O 与物理沿用 Unity 既有实现（混合架构，DOTS 常见做法）
-- **预测**：`PredictionState`/`PredictionInput`/`ServerSnapshot`/`PredictionStep`/
-  `PredictionHistoryElement` + `LocalPredictionJob`（Burst `IJobEntity`），按 20 Hz 整数毫米
-  步进、领先 3 tick、记录历史并在收到权威快照时回滚重放；网络层只负责喂输入和发送 tick
-- **批处理**：`FighterStateUpdateJob`（Burst `IJobEntity`）负责计时、远端插值与倒地，
-  `FighterViewSystem` 只做表现。PlayMode 基准（4000 远端，10 次平均）：
-  **job 0.118 ms vs 托管循环 3.569 ms**（约 30×）
-- **ECS 权威位移（可选）**：`AI003_ECS_MOTOR=1` 时 `MotorStepJob` 拥有位置/重力/跳跃/地形钳制，
-  GO 只做视图；`demo-room` 与 `demo-hub` 在该开关下均验证通过
-- **ECS 地形碰撞**：`TerrainHeightField` + `TerrainClampSystem`（Burst）把带 `TerrainBody`
-  的实体钳制到高度图；PlayMode `TerrainBodyIsClampedToHeightField` 覆盖
-- **Entities Graphics（保留为可选路径）**：`com.unity.entities.graphics@6.6.0`
-  - URP Lit + 运行时实体可渲染（[探针](docs/images/ecs-graphics-probe.png)）
-  - 自定义地形 shader：手动创建的实体可以正常渲染——1 个、16 个、甚至 **256 个**
-    （[256 个实体](docs/images/ecs-terrain-manual-256.png)）；但用同一套代码在
-    `TerrainStreaming` 的启动帧批量创建时**不绘制**（[灰色证据](docs/images/ecs-terrain-runtime-entities.png)），
-    组件/包围盒/材质/网格检查均一致，疑似 6.6 运行时批量注册的初始化竞态；
-    早期未开 instancing 时为洋红/灰色（[洋红](docs/images/ecs-terrain-shader-fail.png)、[灰色](docs/images/ecs-terrain-ecs-gray.png)）
-  - **整张 2 km 世界已烘焙并由 Entities Graphics 渲染**：地形材质改为 **URP Lit + 世界顶点色贴图**
-    （513×513 颜色纹理，chunk UV 直接是归一化世界坐标），16×16 = **256 chunk** 全量烘焙为
-    `BakedWorld.unity`；Play 下关闭 GameObject 地形后，整张地形（山川/沙漠/海岸）由 ECS 实体渲染
-    （[全景截图](docs/images/ecs-terrain-full-baked.png)）
-  - 烘焙触发：`scripts\bake-unity-terrain.cmd`（批处理状态机，自动 Open/Close + 重导入），
-    或菜单 `AI003 → Bake Terrain SubScene`
-  - 运行时 **ECS 渲染流式**：`TerrainEcsStreaming` 按摄像机距离（900 m）给烘焙 chunk 加/去
-    `DisableRendering`；实测 152/256 → 0（[截图](docs/images/ecs-terrain-runtime-stream.png)）
-  - **内存级 tile 流式**：`StreamingWorld.unity` 把世界拆成 16 个 512 m tile（各自独立 SubScene），
-    运行时 `TerrainTileStreaming` 用 `SceneSystem.LoadSceneAsync/UnloadScene` 按距离加载/卸载；
-    实测 14/16 tile 加载、实体 224 → 0（远离）→ 240（返回），证据
-    [ecs-tile-streaming.png](clients/unity/UnityGameClient/Assets/Screenshots/ecs-tile-streaming.png)；
-    烘焙命令：`AI003 → Bake Tiled Streaming Terrain`（或批处理 `-executeMethod AI003.EditorTools.BakeTiledTerrain.RunBatch`）
-  - **DOTS 骨骼动画（混合蒙皮）**：`DotsBoneRig` 把 45 根骨骼映射为 ECS 实体，
-    `BoneAnimationSystem`（Burst `IJobEntity`）驱动旋转，再回写 GameObject 骨骼由 SkinnedMeshRenderer 蒙皮；
-    环境变量 `AI003_DOTS_BONES=1` 启用；证据
-    [dots-bones-character.png](clients/unity/UnityGameClient/Assets/Screenshots/dots-bones-character.png)
-  - **ECS 地形碰撞**：`TerrainHeightField` 注册高度图，`TerrainClampSystem`（Burst job）把带
-    `TerrainBody` 的实体钳制到地形高度；PlayMode 测试 `TerrainBodyIsClampedToHeightField` 通过
-  - 结论：**静态世界可用 SubScene 烘焙 + URP Lit 渲染**；`AI003_TERRAIN_ECS=1` 保留为运行时实验开关。
-    烘焙网格资产不再入库（`.gitignore`），克隆后跑一次烘焙脚本生成。细节见
-    [Entities Graphics 复测报告](docs/entities-graphics-report.md)
-- 验证：PlayMode **8/8**（含实体→Transform、整数预测、Burst 基准、ECS 地形碰撞）；`demo-room` 双端截图确认
-
-限制：角色移动仍由 GameObject CharacterController 驱动（ECS 地形碰撞用于 ECS 实体）；蒙皮仍由 Unity SkinnedMeshRenderer 完成。
+- 网络：`ConnectionBootstrap`（WebSocket 大厅/世界同步）+ `RoomClient`/`ArenaClient`；
+  房间消息在 `room.entered` 带 `udp` 时切到 `RudpTransport`（可靠 UDP），否则回退 WS
+- 房间预测：`RoomClient` 内按 20 Hz 整数毫米领先 3 tick 模拟，收到 `room.frame` 后
+  误差 >50 mm 回滚并重放未确认输入；`ArenaClient` 对 `room.arena.snap/delta` 做同样的回滚重放
+- 远端表现：`RemoteAvatar`（骨骼 + 动画混合、攻击前冲、受击闪红、倒地）平滑到服务器位置
+- 世界：`WorldTerrain` 一次性构建地形 chunk、水面与碰撞；`ThirdPersonController` 负责移动/重力/跳跃
+- 验证：PlayMode **2/2**（联网 + 世界/角色物理），`demo-room`（frame/arena）、`demo-hub` 通过
 
 ## 已实现的技术点
 
@@ -333,12 +290,8 @@ ai003/
 
 - 世界尺寸完全由数据决定：改 `world.json` 的 `sizeMeters` / `resolution` 即可，
   客户端不写死；`scripts/build-world.cmd -Size 4096`（或 8192）会重新生成并同步到两端
-- Unity 地形按 **128 m chunk** 流式加载（`TerrainStreaming`）：
-  - 视野 2000 m，LOD0（全分辨率，≤700 m）、LOD1（strided 2，≤1400 m）、LOD2（strided 4）
-  - 只有 LOD0 chunk 挂 `MeshCollider`；离开视野的 chunk 直接 `SetActive(false)`
-  - 统计通过 `WorldStats.Describe()`（chunks/verts/colliders/refresh/build）输出，PlayMode 有断言
-- 实测：4 km 世界（1025² 顶点、32²=1024 chunks）在 400 m 测试视野下只构建 **33/1024** 个 chunk、
-  8.3k 顶点、3 个 collider；默认 2 km 世界在 2000 m 视野下 256/256、149k 顶点
+- Unity 侧 `WorldBootstrap` 在加载时按 **8×8 = 64 chunk**（每块 256 m）一次性构建地形、
+  水面与 `MeshCollider`；世界数据大小由 `world.json` 决定
 - UE 侧按 **8×8 chunk 懒加载**（总计 64 块）+ 三级 LOD（≤450/900/1400 m），超出视野隐藏，
   日志每 2 s 输出统计（[截图](docs/images/ue-terrain-streaming.png)）
 - 服务端 `GET /world` 返回世界元数据与进程指标（`sizeMeters`、`resolution`、`chunkerMeters`、
@@ -492,7 +445,6 @@ ue5-world  PASS
 | `scripts/smoke-all.ps1` | 上述全部串起来，带超时与汇总；`-WithCompare` 加画面对照、`-WithRoom` 加同房演示；`-UpdateBaseline` 更新 `demo/smoke-baseline.json` |
 | `scripts/demo-hub.ps1` | 一条命令跑 scenario + compare + room，汇总生成 `artifacts/demo/report.md` 与 `report.json`（含基线对比） |
 | `scripts/demo-arena.ps1` | 无头竞技场演示：起网关 + Go arena 客户端，验证 usercmd/快照/delta/ack，输出 `artifacts/demo/arena.json` |
-| `scripts/bake-unity-terrain.ps1` | 重建 256 chunk 地形资产并触发 SubScene 烘焙（`RunBatch` 状态机） |
 
 每个 `.ps1` 旁边都有同名 `.cmd`，双击或 `cmd /c` 调用即可（本机 PowerShell 执行策略为
 Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
@@ -531,13 +483,11 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | 地形精度 | 4 m 网格、平滑着色，近看缺少细节 | 加贴图/法线细节或提高分辨率 + LOD |
 | 世界加载 | Unity 有 128 m chunk 流式 + LOD；UE 8×8 chunk 懒加载 + 三级 LOD（≤450/900/1400 m） | 已满足演示需求 |
 | 房间传输 | 房间消息默认走**可信赖 UDP**（序号/ACK/重传/乱序/去重/分片），WS 保留为大厅/世界同步与回退 | 可继续加拥塞控制/加密 |
-| 纯 ECS 蒙皮 | 仍是“ECS 驱动骨骼 + SkinnedMeshRenderer 蒙皮”；Entities Graphics 变形注册在 6.6 下未打通 | 需要内嵌包加日志或改 baker |
-| ECS 角色位移 | `AI003_ECS_MOTOR=1` 可选；默认仍是 GameObject `CharacterController` | 稳定后可切默认 |
 
 ## 接下来（按技术演示排序）
 
-1. **纯 ECS 蒙皮**：把骨骼/蒙皮完全搬进 Entities Graphics（当前是混合方案，见"已知差异"）；
-2. **ECS 角色位移默认化**：`AI003_ECS_MOTOR` 稳定后替代 GameObject `CharacterController`；
+1. **网络与房间**：RUDP 拥塞控制、可选加密；
+2. **表现层**：正式竞技场场景、模型与 Niagara 特效；
 3. **房间传输增强**：RUDP 拥塞控制、可选加密、UDP 打洞/中继；
 4. **表现层替换**（可选）：正式竞技场场景、模型与 Niagara 特效；
 5. **CI 扩展**：把 `demo-room`（UDP，frame+arena）纳入 `smoke-all` 的固定回归。

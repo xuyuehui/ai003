@@ -12,11 +12,9 @@ namespace AI003.World
     /// </summary>
     public sealed class WorldTerrain : MonoBehaviour
     {
-        /// <summary>Chunk edge in heightmap cells (32 * 4 m = 128 m at the default world).</summary>
-        public const int CellsPerChunk = 32;
+        public const int ChunksPerAxis = 8;
 
         public WorldData Data { get; private set; }
-        public int ChunksPerAxis => (Data.Resolution - 1) / CellsPerChunk;
         public int ChunkCount => ChunksPerAxis * ChunksPerAxis;
         public Material TerrainMaterial { get; private set; }
         public Material WaterMaterial { get; private set; }
@@ -28,18 +26,11 @@ namespace AI003.World
             TerrainMaterial = CreateTerrainMaterial();
             WaterMaterial = CreateWaterMaterial();
 
-            int cellsPerChunk = CellsPerChunk;
+            int cellsPerChunk = (data.Resolution - 1) / ChunksPerAxis;
             if (cellsPerChunk * ChunksPerAxis != data.Resolution - 1)
             {
                 throw new System.InvalidOperationException(
                     $"resolution {data.Resolution} is not divisible into {ChunksPerAxis} chunks");
-            }
-
-            if (Application.isPlaying && System.Environment.GetEnvironmentVariable("AI003_TERRAIN_STREAM") != "0")
-            {
-                gameObject.AddComponent<TerrainStreaming>().Configure(this, data);
-                BuildWater(data);
-                return;
             }
 
             float half = data.SizeMeters * 0.5f;
@@ -54,7 +45,7 @@ namespace AI003.World
                         0f,
                         -half + cz * cellsPerChunk * data.CellSize);
 
-                    Mesh mesh = BuildChunkMesh(data, cx, cz);
+                    Mesh mesh = BuildChunkMesh(data, cx, cz, cellsPerChunk);
 
                     chunkObject.AddComponent<MeshFilter>().sharedMesh = mesh;
                     var renderer = chunkObject.AddComponent<MeshRenderer>();
@@ -70,20 +61,17 @@ namespace AI003.World
             BuildWater(data);
         }
 
-        public static Mesh BuildChunkMesh(WorldData data, int chunkX, int chunkZ, int stride = 1)
+        public static Mesh BuildChunkMesh(WorldData data, int chunkX, int chunkZ, int cellsPerChunk)
         {
-            if (stride < 1) stride = 1;
-
-            int cellsPerChunk = CellsPerChunk;
             int res = data.Resolution;
-            int vertsPerAxis = cellsPerChunk / stride + 1;
+            int vertsPerAxis = cellsPerChunk + 1;
             int vertCount = vertsPerAxis * vertsPerAxis;
 
             var vertices = new Vector3[vertCount];
             var normals = new Vector3[vertCount];
             var colors = new Color32[vertCount];
             var uvs = new Vector2[vertCount];
-            var triangles = new int[(vertsPerAxis - 1) * (vertsPerAxis - 1) * 6];
+            var triangles = new int[cellsPerChunk * cellsPerChunk * 6];
 
             int baseX = chunkX * cellsPerChunk;
             int baseZ = chunkZ * cellsPerChunk;
@@ -91,14 +79,14 @@ namespace AI003.World
 
             for (int lz = 0; lz < vertsPerAxis; lz++)
             {
-                int gz = baseZ + lz * stride;
+                int gz = baseZ + lz;
                 for (int lx = 0; lx < vertsPerAxis; lx++)
                 {
-                    int gx = baseX + lx * stride;
+                    int gx = baseX + lx;
                     int vi = lz * vertsPerAxis + lx;
                     int gi = gz * res + gx;
 
-                    vertices[vi] = new Vector3(lx * stride * cell, data.Heights[gi], lz * stride * cell);
+                    vertices[vi] = new Vector3(lx * cell, data.Heights[gi], lz * cell);
                     normals[vi] = data.NormalAt(gx, gz);
                     colors[vi] = data.Colors[gi];
                     uvs[vi] = new Vector2((float)gx / (res - 1), (float)gz / (res - 1));
@@ -106,9 +94,9 @@ namespace AI003.World
             }
 
             int t = 0;
-            for (int lz = 0; lz < vertsPerAxis - 1; lz++)
+            for (int lz = 0; lz < cellsPerChunk; lz++)
             {
-                for (int lx = 0; lx < vertsPerAxis - 1; lx++)
+                for (int lx = 0; lx < cellsPerChunk; lx++)
                 {
                     int i0 = lz * vertsPerAxis + lx;
                     int i1 = i0 + 1;
@@ -169,7 +157,7 @@ namespace AI003.World
             {
                 throw new MissingReferenceException("shader AI003/TerrainVertexColor was not found");
             }
-            var material = new Material(shader) { name = "TerrainVertexColor", enableInstancing = true };
+            var material = new Material(shader) { name = "TerrainVertexColor" };
             material.SetFloat("_Smoothness", 0.15f);
             return material;
         }

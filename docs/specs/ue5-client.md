@@ -103,7 +103,7 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
 - 对照截图：`-AI003DemoShot` 用固定机位（spawn − 6 m Y、+3.2 m Z，看向胸口）和
   `artifacts/demo/ue5.png` 输出；曝光由无边界 PostProcessVolume 固定（Histogram，
   min=max=0.8 EV，`AEM_Manual` 会黑帧），供 `scripts/demo-compare.cmd` 合成。
-- 房间截图：`-AI003RoomShot` 在进房 20 s 后由引擎自身截图到
+- 房间截图：`-AI003RoomShot` 在进房 60 s 后由引擎自身截图到
   `artifacts/demo/room-ue5.png` 并退出（不依赖窗口焦点）；`scripts/demo-room.cmd` 使用。
 - 世界尺寸由 `WorldData/world.json` 决定，`scripts/build-world.cmd -Size 4096` 可直接给 UE 换 4 km 世界。
 - 地形流式：8×8 chunk（默认 256 m/块），按玩家距离懒加载并三级 LOD：
@@ -114,7 +114,7 @@ Plugins/EngineWire/            第三方 MCP 插件（不入库）
   距离阈值以**厘米**为单位（`FVector::Dist2D` 返回 cm）。
 - 光照：Sun 的 `ForwardShadingPriority=1`、Fill 为 0，消除 "multiple directional lights"
   的前向着色警告。
-- 已知限制：单连接只进一个房间（自动匹配），无预测/回滚，房间叠加在大世界出生点。
+- 已知限制：单连接只进一个房间（自动匹配）；arena 与 frame 两种房间由服务器 `sync` 字段决定。
 
 ## 6. 材质
 

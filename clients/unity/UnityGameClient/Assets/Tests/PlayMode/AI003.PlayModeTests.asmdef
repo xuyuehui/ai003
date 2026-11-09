@@ -3,11 +3,6 @@
     "rootNamespace": "AI003.Tests",
     "references": [
         "AI003.Runtime",
-        "AI003.Ecs",
-        "Unity.Entities",
-        "Unity.Transforms",
-        "Unity.Collections",
-        "Unity.Mathematics",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using AI003.Ecs;
 using AI003.Player;
 using AI003.World;
 using Newtonsoft.Json.Linq;
@@ -29,7 +28,6 @@ namespace AI003.Net
         private readonly Dictionary<string, RemoteAvatar> _remotes = new Dictionary<string, RemoteAvatar>();
         private readonly List<string> _stale = new List<string>();
         private readonly List<Envelope> _inbox = new List<Envelope>();
-        private RoomEcsBridge _bridge;
 
         private ConnectionBootstrap _connection;
         private ThirdPersonController _local;
@@ -98,7 +96,6 @@ namespace AI003.Net
                 return;
             }
             Instance = this;
-            _bridge = RoomEcsBridge.EnsureExists();
         }
 
         private void OnDestroy()
@@ -236,10 +233,7 @@ namespace AI003.Net
                     _remotes[id] = avatar;
                 }
 
-                float animSpeed = anim == "run" ? 1f : anim == "walk" ? 0.35f : anim == "jump" ? 0.4f : anim == "swim" ? 0.3f : 0f;
-                float playRate = anim == "walk" ? 0.7f : anim == "swim" ? 0.6f : 1f;
-                _bridge.UpsertRemote("world:" + id, position, yaw, true, animSpeed, playRate,
-                    avatar.transform, avatar.Animator, avatar.Renderer);
+                avatar.Apply(position, yaw, anim);
                 _stale.Remove(id);
             }
 
@@ -249,7 +243,6 @@ namespace AI003.Net
                 {
                     Destroy(avatar.gameObject);
                 }
-                _bridge.RemoveRemote("world:" + id);
                 _remotes.Remove(id);
             }
         }
@@ -266,7 +259,11 @@ namespace AI003.Net
                 }
             }
 
-            return RemoteAvatar.Create(_remotePrefab, position, yaw, "Remote_" + id);
+            GameObject instance = Instantiate(_remotePrefab, position, Quaternion.Euler(0f, yaw, 0f));
+            instance.name = "Remote_" + id;
+            var avatar = instance.AddComponent<RemoteAvatar>();
+            avatar.Apply(position, yaw, "idle");
+            return avatar;
         }
 
         private void ResetSession()

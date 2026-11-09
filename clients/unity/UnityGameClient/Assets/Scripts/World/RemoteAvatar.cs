@@ -3,70 +3,139 @@ using UnityEngine;
 namespace AI003.World
 {
     /// <summary>
-    /// Passive presentation shell for a remote fighter. Position, rotation,
-    /// animation and hit/death feedback are owned by the ECS systems; this
-    /// component only exposes the managed references the bridge needs.
+    /// Visual proxy for another player. The server sends authoritative positions
+    /// at 10 Hz, so the transform is smoothed towards the latest snapshot and the
+    /// animator is driven by the server-derived animation name.
     ///
-    /// The visual model is instantiated as a child with the same 180-degree
-    /// offset the local player uses (the Kenney rig faces -Z), so ECS yaw can be
-    /// applied to the wrapper root and the avatar faces its movement direction.
+    /// Combat feedback (attack lunge, hit flash, death collapse) is triggered from
+    /// the room's events, not from the snapshot itself.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class RemoteAvatar : MonoBehaviour
     {
-        public Animator Animator { get; private set; }
-        public Renderer Renderer { get; private set; }
+        private const float Smoothing = 12f;
+        private const float AttackSeconds = 0.18f;
+        private const float HitSeconds = 0.15f;
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
-        private const string ModelYawKey = "AI003.ModelYawExtra";
+        public Vector3 TargetPosition { get; private set; }
+        public float TargetYaw { get; private set; }
+        public string Anim { get; private set; } = "idle";
+        public bool Alive { get; private set; } = true;
 
-        /// <summary>Extra model yaw shared with the local player (PlayerPrefs / env).</summary>
-        public static float ExtraYaw
-        {
-            get
-            {
-                float extra = PlayerPrefs.GetFloat(ModelYawKey, 0f);
-                string overrideYaw = System.Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
-                if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
-                {
-                    extra = parsed;
-                }
-                return extra;
-            }
-        }
+        private Animator _animator;
+        private Renderer[] _renderers;
+        private MaterialPropertyBlock _block;
+        private float _speedParam;
+        private float _playRate = 1f;
+        private bool _grounded = true;
+        private float _attackUntil;
+        private float _hitUntil;
+        private float _deathAt;
 
         private void Awake()
         {
-            Animator = GetComponent<Animator>();
-            Renderer = GetComponentInChildren<Renderer>();
+            _animator = GetComponent<Animator>();
+            _renderers = GetComponentsInChildren<Renderer>(true);
+            _block = new MaterialPropertyBlock();
         }
 
-        public void Configure(Animator animator, Renderer renderer)
+        /// <summary>Stores the newest snapshot values; smoothing happens in Update.</summary>
+        public void Apply(Vector3 position, float yaw, string anim)
         {
-            Animator = animator;
-            Renderer = renderer;
-        }
+            TargetPosition = position;
+            TargetYaw = yaw;
+            Anim = string.IsNullOrEmpty(anim) ? "idle" : anim;
 
-        /// <summary>Builds a remote avatar wrapper with a correctly oriented model.</summary>
-        public static RemoteAvatar Create(GameObject prefab, Vector3 position, float yaw, string name)
-        {
-            var wrapper = new GameObject(name);
-            wrapper.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
-
-            GameObject model = Instantiate(prefab, wrapper.transform);
-            model.name = "Model";
-            model.transform.localPosition = Vector3.zero;
-            float baseYaw = model.transform.localEulerAngles.y;
-            model.transform.localRotation = Quaternion.Euler(0f, baseYaw + ExtraYaw, 0f);
-            model.transform.localScale = Vector3.one * 0.45f;
-
-            foreach (var collider in model.GetComponentsInChildren<Collider>())
+            _grounded = Anim != "jump";
+            switch (Anim)
             {
-                Destroy(collider);
+                case "run":
+                    _speedParam = 1f;
+                    _playRate = 1f;
+                    break;
+                case "walk":
+                    _speedParam = 0.35f;
+                    _playRate = 0.7f;
+                    break;
+                case "swim":
+                    _speedParam = 0.3f;
+                    _playRate = 0.6f;
+                    break;
+                case "jump":
+                    _speedParam = 0.4f;
+                    _playRate = 1f;
+                    break;
+                default:
+                    _speedParam = 0f;
+                    _playRate = 1f;
+                    break;
+            }
+        }
+
+        public void TriggerAttack() => _attackUntil = Time.time + AttackSeconds;
+
+        public void TriggerHit() => _hitUntil = Time.time + HitSeconds;
+
+        public void SetAlive(bool alive)
+        {
+            if (!alive && Alive) _deathAt = Time.time;
+            Alive = alive;
+        }
+
+        private void Update()
+        {
+            float t = 1f - Mathf.Exp(-Smoothing * Time.deltaTime);
+
+            Vector3 target = TargetPosition;
+            if (Time.time < _attackUntil)
+            {
+                float progress = 1f - (_attackUntil - Time.time) / AttackSeconds;
+                target += Quaternion.Euler(0f, TargetYaw, 0f) * Vector3.forward
+                          * (Mathf.Sin(progress * Mathf.PI) * 0.35f);
+            }
+            transform.position = Vector3.Lerp(transform.position, target, t);
+
+            if (Alive)
+            {
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation, Quaternion.Euler(0f, TargetYaw, 0f), t);
+            }
+            else
+            {
+                float collapse = Mathf.Clamp01((Time.time - _deathAt) / 0.25f);
+                transform.rotation = Quaternion.Slerp(
+                    Quaternion.Euler(0f, TargetYaw, 0f),
+                    Quaternion.Euler(90f, TargetYaw, 0f),
+                    Mathf.SmoothStep(0f, 1f, collapse));
             }
 
-            var avatar = wrapper.AddComponent<RemoteAvatar>();
-            avatar.Configure(model.GetComponent<Animator>(), model.GetComponentInChildren<Renderer>());
-            return avatar;
+            UpdateColor();
+
+            if (_animator == null) return;
+            _animator.SetFloat("Speed", Alive ? _speedParam : 0f);
+            _animator.SetBool("Grounded", _grounded);
+            _animator.speed = Alive ? _playRate : 0f;
+        }
+
+        private void UpdateColor()
+        {
+            Color color = Color.white;
+            if (!Alive)
+            {
+                color = new Color(0.35f, 0.35f, 0.35f, 1f);
+            }
+            else if (Time.time < _hitUntil)
+            {
+                color = new Color(1f, 0.28f, 0.22f, 1f);
+            }
+
+            _block.SetColor(BaseColorId, color);
+            if (_renderers == null) return;
+            foreach (Renderer renderer in _renderers)
+            {
+                if (renderer != null) renderer.SetPropertyBlock(_block);
+            }
         }
     }
 }

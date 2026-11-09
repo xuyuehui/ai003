@@ -29,25 +29,6 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 运行时脚本必须属于 `AI003.Runtime`；该程序集显式引用 `Unity.InputSystem`。
 - 命名空间：`AI003.Net`、`AI003.World`、`AI003.Player`、`AI003.EditorTools`、`AI003.Tests`。
 - 编辑器脚本不得进入运行时程序集；运行时脚本不得引用 `UnityEditor`。
-- ECS 层（`Assets/Scripts/Ecs/`，asmdef `AI003.Ecs`，引用 `Unity.Entities`/`Unity.Mathematics`/
-  `Unity.Collections`/`Unity.Transforms`）：组件 `FighterState`、`LocalFighterTag`、`RemoteFighterTag`、
-  `FighterView`、`FighterAnim`；系统 `FighterViewSystem`（`SimulationSystemGroup`）负责远端插值、
-  前冲、受击闪红、倒地与 Transform/Animator 写回。
-- ECS 系统必须是 unmanaged struct；托管对象（如 `MaterialPropertyBlock`）放 static 字段。
-- 桥接：`RoomEcsBridge` 把房间/世界快照转换为实体；网络层不直接写 Transform。
-- 预测：`PredictionState`（整数毫米位置/朝向/tick/累加器/边界与速度）、`PredictionInput`、
-  `ServerSnapshot`、`PredictionStep` 缓冲、`PredictionHistoryElement` 缓冲、`SeparationBody` 缓冲；
-  `LocalPredictionJob`（Burst `IJobEntity`）20 Hz 步进、按服务器规则做 20 mm 分离、
-  领先 3 tick、误差 >50 mm 时回滚重放，网络层只收发 tick。
-- 命中反馈：攻击按下当帧用最新快照做范围/锥角判定，本地立刻触发前冲与受击闪红，
-  伤害/死亡仍以服务器事件为准（延迟 <1 帧）。
-- 批处理：`FighterStateUpdateJob`（`[BurstCompile] IJobEntity`）计时/插值/倒地，
-  `FighterViewSystem`（`UpdateAfter`）只做 Transform/Animator/受击颜色。
-- Entities Graphics 实测：静态网格可渲染；自定义地形 shader 加 DOTS pragma 后仍洋红，
-  最小 unlit DOTS shader + 延迟注册仍无绘制（灰色）；骨骼角色需 DOTS skinning。
-  已回退，地形/角色继续 GameObject 渲染。
-- 基准：`FighterBenchmarkSystem`（PlayMode 测试创建）4000 远端 × 10 次：
-  job 0.118 ms vs 托管 3.569 ms。
 
 ## 3. 代码规范
 
@@ -61,11 +42,7 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 ## 4. 世界与渲染
 
 - 数据：`world.json` + `heightmap.f32` + `colors.rgba8` + `biomes.r8`，米制、Y 向上、行优先。
-- 地形：按 **128 m chunk** 分块（`CellsPerChunk=32`，4 m 格），网格由高度图/顶点色生成；
-  法线由高度图中心差分；只有近处 chunk 有 `MeshCollider`。
-- 流式加载 `TerrainStreaming`：视野 2000 m，LOD0（stride 1，≤700 m）、LOD1（stride 2，≤1400 m）、
-  LOD2（stride 4），离开视野的 chunk 直接隐藏；`WorldStats` 输出 chunks/verts/colliders/耗时。
-  世界尺寸由 `world.json` 决定，2/4/8 km 都用同一套加载逻辑。
+- 地形：8×8 分块，每块 65×65 顶点；`MeshCollider` 非凸；法线由高度图中心差分。
 - 顶点色是世界文件里的**线性**值，直接进 shader，不做二次 sRGB 转换。
 - 地形材质 `AI003/TerrainVertexColor`（Forward + DepthOnly + DepthNormals + Fog + 阴影）；
   水用 URP/Lit 透明；角色用 URP/Lit。

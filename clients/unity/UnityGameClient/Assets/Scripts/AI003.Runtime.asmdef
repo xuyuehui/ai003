@@ -2,15 +2,6 @@
     "name": "AI003.Runtime",
     "rootNamespace": "AI003",
     "references": [
-        "AI003.Ecs",
-        "Unity.Entities",
-        "Unity.Burst",
-        "Unity.Scenes",
-        "Unity.Entities.Graphics",
-        "Unity.Rendering",
-        "Unity.Transforms",
-        "Unity.Mathematics",
-        "Unity.Collections",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

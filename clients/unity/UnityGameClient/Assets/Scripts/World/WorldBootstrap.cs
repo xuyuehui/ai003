@@ -22,33 +22,6 @@ namespace AI003.World
         public OrbitCamera CameraRig { get; private set; }
         public bool IsReady => Data != null && Player != null;
 
-        private Transform _model;
-        private float _modelBaseYaw;
-
-        // Extra yaw on top of the prefab's authored rotation. Default 0 because the
-        // prefab already carries the correction; hardcoding 180 here would override
-        // (and break) a prefab that was authored without a rotation.
-        private const string ModelYawKey = "AI003.ModelYawExtra";
-
-        /// <summary>
-        /// F9 adds 180° to the model and persists the extra offset (PlayerPrefs),
-        /// for machines whose imported rig still faces the other way.
-        /// </summary>
-        private void Update()
-        {
-            if (_model == null) return;
-            var keyboard = UnityEngine.InputSystem.Keyboard.current;
-            if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
-            {
-                float extra = PlayerPrefs.GetFloat(ModelYawKey, 0f) + 180f;
-                extra = Mathf.Repeat(extra, 360f);
-                PlayerPrefs.SetFloat(ModelYawKey, extra);
-                PlayerPrefs.Save();
-                _model.localRotation = Quaternion.Euler(0f, _modelBaseYaw + extra, 0f);
-                Debug.Log($"[AI003] model extra yaw {extra:F0} (base {_modelBaseYaw:F0}, saved {ModelYawKey})");
-            }
-        }
-
         [SerializeField] private bool _autoBuild = true;
 
         private GUIStyle _hudStyle;
@@ -72,22 +45,6 @@ namespace AI003.World
                 return;
             }
             Instance = this;
-
-            // Baked entity terrain (AI003/Bake Terrain SubScene) streams its chunks
-            // by distance; without baked entities the component is a no-op.
-            if (GetComponent<TerrainEcsStreaming>() == null)
-            {
-                gameObject.AddComponent<TerrainEcsStreaming>();
-            }
-            if (GetComponent<TerrainTileStreaming>() == null)
-            {
-                gameObject.AddComponent<TerrainTileStreaming>();
-            }
-        }
-
-        private void OnDestroy()
-        {
-            TerrainHeightField.Unregister();
         }
 
         private void Start()
@@ -110,8 +67,6 @@ namespace AI003.World
                 Debug.LogError($"[AI003] cannot load world: {e.Message}");
                 return;
             }
-
-            TerrainHeightField.Register(Data.Heights, Data.Resolution, Data.CellSize, Data.SizeMeters);
 
             ConfigureRendering();
 
@@ -183,10 +138,6 @@ namespace AI003.World
             Player.SeaLevel = Data.SeaLevel;
 
             AttachCharacter(playerObject);
-            if (System.Environment.GetEnvironmentVariable("AI003_ECS_MOTOR") == "1")
-            {
-                playerObject.AddComponent<AI003.Motor.EcsMotorDriver>();
-            }
 
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
@@ -229,24 +180,9 @@ namespace AI003.World
             GameObject model = Instantiate(prefab, playerObject.transform);
             model.name = "CharacterModel";
             model.transform.localPosition = Vector3.zero;
-
-            // Keep the rotation authored in the prefab and add an optional extra
-            // offset (PlayerPrefs / env). Overwriting the authored rotation with a
-            // hardcoded 180° flips rigs whose prefab was not pre-rotated.
-            _modelBaseYaw = model.transform.localEulerAngles.y;
-            float extraYaw = PlayerPrefs.GetFloat(ModelYawKey, 0f);
-            string overrideYaw = Environment.GetEnvironmentVariable("AI003_MODEL_YAW");
-            if (!string.IsNullOrEmpty(overrideYaw) && float.TryParse(overrideYaw, out float parsed))
-            {
-                extraYaw = parsed;
-            }
-            model.transform.localRotation = Quaternion.Euler(0f, _modelBaseYaw + extraYaw, 0f);
-            if (System.Environment.GetEnvironmentVariable("AI003_DOTS_BONES") == "1")
-            {
-                model.AddComponent<DotsBoneRig>();
-            }
-            _model = model.transform;
-            Debug.Log($"[AI003] model yaw base {_modelBaseYaw:F0} + extra {extraYaw:F0}");
+            // The prefab already carries the avatar, material and 180-degree facing;
+            // keep the visual scale in one place (3.96 m model -> 1.8 m character).
+            model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             model.transform.localScale = Vector3.one * 0.45f;
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())

@@ -216,9 +216,10 @@ namespace AI003.Net
             if (cmd.Forward != 0 && cmd.Side != 0) step = 0.177f;
             _predicted.x += cmd.Side * step;
             _predicted.z += cmd.Forward * step;
-            if (TerrainHeightField.IsValid)
+            var bootstrap = AI003.World.WorldBootstrap.Instance;
+            if (bootstrap != null && bootstrap.Data != null)
             {
-                float height = TerrainHeightField.Sample(_predicted.x, _predicted.z);
+                float height = bootstrap.Data.HeightAt(_predicted.x, _predicted.z);
                 if (_predicted.y < height) _predicted.y = height;
             }
         }
@@ -330,7 +331,11 @@ namespace AI003.Net
             }
             GameObject prefab = Resources.Load<GameObject>("Characters/KenneyProtagonists/Player");
             if (prefab == null) return;
-            _remotes[id.ToString()] = RemoteAvatar.Create(prefab, position, 0f, "Arena_" + id);
+            GameObject instance = Instantiate(prefab, position, Quaternion.identity);
+            instance.name = "Arena_" + id;
+            var created = instance.AddComponent<AI003.World.RemoteAvatar>();
+            created.Apply(position, 0f, "idle");
+            _remotes[id.ToString()] = created;
         }
 
         private void UpdateInterpolatedRemotes()
