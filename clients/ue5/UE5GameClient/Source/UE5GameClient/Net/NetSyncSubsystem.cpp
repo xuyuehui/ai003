@@ -1,6 +1,7 @@
 // Copyright AI003. All rights reserved.
 
 #include "Net/NetSyncSubsystem.h"
+#include "Mass/FighterMassRenderer.h"
 #include "Net/RudpTransport.h"
 
 #include "Dom/JsonObject.h"
@@ -86,14 +87,11 @@ void UNetSyncSubsystem::Deinitialize()
 	}
 	Remotes.Reset();
 
-	for (const TPair<FString, TWeakObjectPtr<ARemotePlayer>>& Pair : RoomRemotes)
+	if (MassRenderer.IsValid())
 	{
-		if (Pair.Value.IsValid())
-		{
-			Pair.Value->Destroy();
-		}
+		MassRenderer->Clear();
 	}
-	RoomRemotes.Reset();
+	RoomPositions.Reset();
 	RoomLastPositions.Reset();
 
 	Super::Deinitialize();
@@ -579,18 +577,7 @@ void UNetSyncSubsystem::ApplyArenaSnapshot(const TSharedPtr<FJsonObject>& Body)
 				if (Id != ArenaSlot + 1)
 				{
 					const FString Key = FString::Printf(TEXT("arena-%d"), Id);
-					TWeakObjectPtr<ARemotePlayer>& Slot = RoomRemotes.FindOrAdd(Key);
-					ARemotePlayer* Remote = Slot.Get();
-					const FVector RemoteTarget = RoomToWorld(X, Z);
-					if (Remote == nullptr && GetWorld() != nullptr)
-					{
-						Remote = GetWorld()->SpawnActor<ARemotePlayer>(RemoteTarget, FRotator::ZeroRotator);
-						Slot = Remote;
-					}
-					if (Remote != nullptr)
-					{
-						Remote->ApplySnapshot(RemoteTarget, 0.f, TEXT("idle"));
-					}
+					UpsertRoomFighter(Key, Id, RoomToWorld(X, Z), FVector::ZeroVector, 0.f, TEXT("idle"), 100, true);
 				}
 				if (Id == ArenaSlot + 1)
 				{
@@ -649,20 +636,17 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 		// Headless demo: walk towards the nearest fighter, stop at ~2.5 m and swing.
 		float NearestDist = TNumericLimits<float>::Max();
 		FVector NearestPos = RoomCenter;
-		if (RoomRemotes.Num() == 0)
+		if (RoomPositions.Num() == 0)
 		{
 			NearestPos = PredictedPos + FVector(1000.f, 0.f, 0.f);
 		}
-		for (const TPair<FString, TWeakObjectPtr<ARemotePlayer>>& Pair : RoomRemotes)
+		for (const TPair<FString, FVector>& Pair : RoomPositions)
 		{
-			if (ARemotePlayer* Remote = Pair.Value.Get())
+			const float Dist = FVector::Dist2D(Pair.Value, PredictedPos);
+			if (Dist < NearestDist)
 			{
-				const float Dist = FVector::Dist2D(Remote->GetActorLocation(), PredictedPos);
-				if (Dist < NearestDist)
-				{
-					NearestDist = Dist;
-					NearestPos = Remote->GetActorLocation();
-				}
+				NearestDist = Dist;
+				NearestPos = Pair.Value;
 			}
 		}
 
@@ -682,7 +666,7 @@ UNetSyncSubsystem::FRoomCommand UNetSyncSubsystem::ReadRoomCommand() const
 			if (DebugBot < 6)
 			{
 				DebugBot++;
-				UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] bot dist=%.0f dx=%d dz=%d attack=%d remotes=%d"), NearestDist, Command.DX, Command.DZ, Command.bAttack ? 1 : 0, RoomRemotes.Num());
+				UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] bot dist=%.0f dx=%d dz=%d attack=%d remotes=%d"), NearestDist, Command.DX, Command.DZ, Command.bAttack ? 1 : 0, RoomPositions.Num());
 			}
 		}
 		return Command;
@@ -825,6 +809,43 @@ void UNetSyncSubsystem::EnterRoom(const TSharedPtr<FJsonObject>& Body)
 		*RoomId, *PlayerId, 1.0 / RoomSendInterval);
 }
 
+void UNetSyncSubsystem::EnsureMassRenderer()
+{
+	if (MassRenderer.IsValid() || GetWorld() == nullptr)
+	{
+		return;
+	}
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	MassRenderer = GetWorld()->SpawnActor<AAI003FighterMassRenderer>(
+		AAI003FighterMassRenderer::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, Params);
+}
+
+void UNetSyncSubsystem::UpsertRoomFighter(const FString& Id, int32 Slot, const FVector& Target,
+	const FVector& Velocity, float Yaw, const FString& Anim, int32 HP, bool bAlive)
+{
+	EnsureMassRenderer();
+	if (!MassRenderer.IsValid())
+	{
+		return;
+	}
+	MassRenderer->Upsert(Id, Slot, Target, Velocity, Yaw, Anim, HP, bAlive);
+	RoomPositions.Add(Id, Target);
+}
+
+void UNetSyncSubsystem::RemoveRoomFighter(const FString& Id)
+{
+	if (MassRenderer.IsValid())
+	{
+		MassRenderer->Remove(Id);
+	}
+	RoomPositions.Remove(Id);
+}
+
+ARemotePlayer* UNetSyncSubsystem::FindRoomView(const FString& Id) const
+{
+	return MassRenderer.IsValid() ? MassRenderer->FindView(Id) : nullptr;
+}
 void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 {
 	if (!Body.IsValid())
@@ -852,7 +873,7 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 		if (DebugFrames2 < 5)
 		{
 			DebugFrames2++;
-			UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] frame players=%d remotes=%d"), RoomFighters, RoomRemotes.Num());
+			UE_LOG(LogTemp, Display, TEXT("[AI003][ROOM] frame players=%d remotes=%d"), RoomFighters, RoomPositions.Num());
 		}
 	}
 
@@ -899,40 +920,27 @@ void UNetSyncSubsystem::ApplyRoomFrame(const TSharedPtr<FJsonObject>& Body)
 			continue;
 		}
 
-		TWeakObjectPtr<ARemotePlayer>& Slot = RoomRemotes.FindOrAdd(Id);
-		ARemotePlayer* Remote = Slot.Get();
-		if (Remote == nullptr)
+		FString Anim = TEXT("idle");
+		FVector Velocity = FVector::ZeroVector;
+		const FVector* Previous = RoomLastPositions.Find(Id);
+		if (bAlive && Previous != nullptr)
 		{
-			Remote = GetWorld() != nullptr
-				? GetWorld()->SpawnActor<ARemotePlayer>(Target, FRotator(0.f, Yaw, 0.f))
-				: nullptr;
-			Slot = Remote;
+			const double Speed = FVector::Dist(*Previous, Target) / 100.0 / FMath::Max(0.001, RoomSendInterval);
+			Anim = Speed > 6.5 ? TEXT("run") : Speed > 0.2 ? TEXT("walk") : TEXT("idle");
+			Velocity = (Target - *Previous) / static_cast<float>(FMath::Max(0.001, RoomSendInterval));
 		}
-
-		if (Remote != nullptr)
-		{
-			FString Anim = TEXT("idle");
-			const FVector* Previous = RoomLastPositions.Find(Id);
-			if (bAlive && Previous != nullptr)
-			{
-				const double Speed = FVector::Dist(*Previous, Target) / 100.0 / FMath::Max(0.001, RoomSendInterval);
-				Anim = Speed > 6.5 ? TEXT("run") : Speed > 0.2 ? TEXT("walk") : TEXT("idle");
-			}
-			RoomLastPositions.Add(Id, Target);
-			Remote->ApplySnapshot(Target, Yaw, bAlive ? Anim : TEXT("idle"));
-		}
+		RoomLastPositions.Add(Id, Target);
+		UpsertRoomFighter(Id, 0, Target, Velocity, Yaw, bAlive ? Anim : TEXT("idle"), HPValue, bAlive);
 	}
 
 	TArray<FString> Stale;
-	for (const TPair<FString, TWeakObjectPtr<ARemotePlayer>>& Pair : RoomRemotes)
+	for (const TPair<FString, FVector>& Pair : RoomPositions)
 	{
 		if (!Seen.Contains(Pair.Key)) Stale.Add(Pair.Key);
 	}
 	for (const FString& Id : Stale)
 	{
-		TWeakObjectPtr<ARemotePlayer> Remote = RoomRemotes.FindRef(Id);
-		if (Remote.IsValid()) Remote->Destroy();
-		RoomRemotes.Remove(Id);
+		RemoveRoomFighter(Id);
 		RoomLastPositions.Remove(Id);
 	}
 
@@ -959,8 +967,8 @@ void UNetSyncSubsystem::HandleRoomEvents(const TSharedPtr<FJsonObject>& Body)
 		int32 Damage = 0;
 		Event->TryGetNumberField(TEXT("damage"), Damage);
 
-		ARemotePlayer* SourceAvatar = RoomRemotes.FindRef(Source).Get();
-		ARemotePlayer* TargetAvatar = RoomRemotes.FindRef(Target).Get();
+		ARemotePlayer* SourceAvatar = FindRoomView(Source);
+		ARemotePlayer* TargetAvatar = FindRoomView(Target);
 
 		if (Type == TEXT("attack"))
 		{

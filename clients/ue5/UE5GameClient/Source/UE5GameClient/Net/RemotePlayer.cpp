@@ -69,6 +69,23 @@ void ARemotePlayer::ApplySnapshot(const FVector& LocationCm, float Yaw, const FS
 	PlayAnim(TargetAnim);
 }
 
+void ARemotePlayer::SetMassPose(const FVector& Location, float Yaw)
+{
+	SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f));
+}
+
+void ARemotePlayer::SetMassVisual(const FString& AnimName, bool bInAlive)
+{
+	if (AnimName != CurrentAnim)
+	{
+		PlayAnim(AnimName);
+	}
+	if (bInAlive != bAlive)
+	{
+		SetAlive(bInAlive);
+	}
+}
+
 void ARemotePlayer::TriggerAttack()
 {
 	AttackUntil = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() + 0.18f : 0.f;
@@ -127,6 +144,11 @@ void ARemotePlayer::PlayAnim(const FString& AnimName)
 
 void ARemotePlayer::Tick(float DeltaSeconds)
 {
+	if (bMassDriven)
+	{
+		Super::Tick(DeltaSeconds);
+		return;
+	}
 	Super::Tick(DeltaSeconds);
 
 	const float Now = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.f;
