@@ -29,7 +29,7 @@ namespace AI003.World
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoInstall()
         {
-            if (UnityEngine.Object.FindFirstObjectByType<WorldBootstrap>() != null)
+            if (UnityEngine.Object.FindAnyObjectByType<WorldBootstrap>() != null)
             {
                 return;
             }
@@ -85,11 +85,11 @@ namespace AI003.World
         {
             // Start from a clean slate: the template scene ships its own camera
             // and directional light, both would fight with ours.
-            foreach (Camera camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
+            foreach (Camera camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsInactive.Include))
             {
                 camera.gameObject.SetActive(false);
             }
-            foreach (Light light in UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            foreach (Light light in UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Include))
             {
                 if (light.type == LightType.Directional)
                 {
@@ -182,7 +182,7 @@ namespace AI003.World
             model.transform.localPosition = Vector3.zero;
             // The prefab already carries the avatar, material and 180-degree facing;
             // keep the visual scale in one place (3.96 m model -> 1.8 m character).
-            model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            model.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
             model.transform.localScale = Vector3.one * 0.45f;
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())
