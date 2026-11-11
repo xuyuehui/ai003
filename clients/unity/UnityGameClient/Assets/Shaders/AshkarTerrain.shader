@@ -10,6 +10,10 @@ Shader "AI003/AshkarTerrain"
         _HeightFogStrength ("Height Fog Strength", Range(0, 1)) = 0.0
         _HeightFogFalloff ("Height Fog Falloff", Float) = 0.012
         _HeightFogDistance ("Height Fog Distance", Float) = 2200
+        [NoScaleOffset] _DetailNormal ("Detail Normal", 2D) = "gray" {}
+        _DetailScale1 ("Detail Scale 1", Float) = 0.09
+        _DetailScale2 ("Detail Scale 2", Float) = 0.37
+        _DetailStrength ("Detail Strength", Range(0, 2)) = 0.5
     }
 
     SubShader
@@ -39,6 +43,9 @@ Shader "AI003/AshkarTerrain"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+            TEXTURE2D(_DetailNormal);
+            SAMPLER(sampler_DetailNormal);
+
             CBUFFER_START(UnityPerMaterial)
                 float _Smoothness;
                 float _RippleStrength;
@@ -48,6 +55,9 @@ Shader "AI003/AshkarTerrain"
                 float _HeightFogStrength;
                 float _HeightFogFalloff;
                 float _HeightFogDistance;
+                float _DetailScale1;
+                float _DetailScale2;
+                float _DetailStrength;
             CBUFFER_END
 
             struct Attributes
@@ -117,6 +127,14 @@ Shader "AI003/AshkarTerrain"
                 normalWS = normalize(normalWS
                     + float3(flow.x, 0.0, flow.y) * cos(phase) * amp
                     + float3(flow2.x, 0.0, flow2.y) * cos(phase2) * amp * 0.5);
+
+                // Two scales of a tiling detail normal: wind-scoured micro relief.
+                // This is what stops a 4 m mesh from reading as melted plastic.
+                float3 d1 = SAMPLE_TEXTURE2D(_DetailNormal, sampler_DetailNormal, p * _DetailScale1).rgb * 2.0 - 1.0;
+                float3 d2 = SAMPLE_TEXTURE2D(_DetailNormal, sampler_DetailNormal, p * _DetailScale2).rgb * 2.0 - 1.0;
+                float detailFade = saturate(1.0 - dist / 420.0);
+                float2 detail = (d1.xy * 0.75 + d2.xy * 0.45) * _DetailStrength * up * up * detailFade;
+                normalWS = normalize(normalWS + float3(detail.x, 0.0, detail.y));
 
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);

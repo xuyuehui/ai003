@@ -65,6 +65,22 @@ Shader "AI003/AshkarSky"
                 float _HorizonBand;
             CBUFFER_END
 
+            float Hash21(float2 p)
+            {
+                p = frac(p * float2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return frac(p.x * p.y);
+            }
+
+            float ValueNoise(float2 p)
+            {
+                float2 i = floor(p);
+                float2 f = frac(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return lerp(lerp(Hash21(i), Hash21(i + float2(1, 0)), f.x),
+                            lerp(Hash21(i + float2(0, 1)), Hash21(i + float2(1, 1)), f.x), f.y);
+            }
+
             Varyings vert(Attributes input)
             {
                 Varyings output;
@@ -83,9 +99,17 @@ Shader "AI003/AshkarSky"
                 float haze = exp(-abs(d.y) * 16.0) * _Haze;
                 sky = lerp(sky, _Horizon.rgb * 1.08, saturate(haze));
 
-                // A broad, soft dust band just above the horizon.
-                float band = exp(-pow((d.y - 0.06) * 9.0, 2.0)) * _DustBand;
-                sky += _Horizon.rgb * band * 0.35;
+                // Layered dust: two soft strata with slow noise so the sky is not
+                // a single flat gradient.
+                float n1 = ValueNoise(d.xz * 5.0 / max(d.y + 0.15, 0.15)) * 0.6
+                           + ValueNoise(d.xz * 13.0) * 0.4;
+                float band1 = exp(-pow((d.y - 0.055) * 11.0, 2.0));
+                float band2 = exp(-pow((d.y - 0.150) * 20.0, 2.0));
+                sky += _Horizon.rgb * _DustBand * (band1 * 0.55 + band2 * 0.25) * (0.55 + 0.45 * n1);
+
+                // Faint sun halo, so the disk sits inside the atmosphere.
+                float halo = pow(saturate(dot(d, normalize(_SunDir.xyz))), 6.0) * 0.10;
+                sky += _SunColor.rgb * halo;
 
                 // Knit the sky into the fogged ground: without this the sea
                 // horizon reads as a hard band of colour.

@@ -265,6 +265,18 @@ namespace AI003.World
         {
             var root = new GameObject("Coldfire");
             root.transform.position = position;
+            // A real point light under the cluster: it is what puts a cold pool of
+            // light on the salt, instead of only a glowing object.
+            var glow = new GameObject("ColdfireLight");
+            glow.transform.SetParent(root.transform, false);
+            glow.transform.localPosition = new Vector3(0f, scale * 0.9f, 0f);
+            var light = glow.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(0.38f, 0.95f, 0.86f);
+            light.intensity = 5.5f * scale;
+            light.range = 34f;
+            light.shadows = LightShadows.None;
+
             var rng = new System.Random(seed);
             for (int i = 0; i < count; i++)
             {

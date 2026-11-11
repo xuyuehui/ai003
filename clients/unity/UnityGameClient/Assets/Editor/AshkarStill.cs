@@ -46,7 +46,7 @@ namespace AI003.EditorTools
             public float bloom;
         }
 
-        [MenuItem("AI003/Render Ashkar Still")]
+        /// <summary>Batch entry point: render, log, quit. Do not call from the GUI.</summary>
         public static void Run()
         {
             try
@@ -62,6 +62,17 @@ namespace AI003.EditorTools
             {
                 Debug.LogError($"[AI003][ASHKAR] FAIL: {e}");
                 EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>Menu / MCP entry point: renders in place, leaves the editor open.</summary>
+        [MenuItem("AI003/Render Ashkar Still")]
+        public static void RenderFromMenu()
+        {
+            var paths = RenderAll();
+            foreach (string p in paths)
+            {
+                Debug.Log($"[AI003][ASHKAR] PASS {p}");
             }
         }
 
@@ -81,6 +92,11 @@ namespace AI003.EditorTools
             terrain.TerrainMaterial.SetFloat("_Smoothness", 0.22f);
             terrain.TerrainMaterial.SetFloat("_RippleStrength", 0.11f);
             terrain.TerrainMaterial.SetFloat("_Speckle", 0.22f);
+            var detail = AshkarTextures.DetailNormal();
+            terrain.TerrainMaterial.SetTexture("_DetailNormal", detail);
+            terrain.TerrainMaterial.SetFloat("_DetailScale1", 0.085f);
+            terrain.TerrainMaterial.SetFloat("_DetailScale2", 0.34f);
+            terrain.TerrainMaterial.SetFloat("_DetailStrength", 0.55f);
 
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>())
             {
@@ -178,14 +194,32 @@ namespace AI003.EditorTools
         // ------------------------------------------------------------- S1 ---
         private static string RenderS1(WorldData data, WorldTerrain terrain, string outDir, Vector3 site, Vector3 viewDir)
         {
+            // Well One needs flat ground, not a knoll: a plaza on a slope reads as
+            // a tilted disc. Pick the broadest flat area and let the land fall away
+            // behind it.
+            site = FindFlatSite(data);
+            Vector3 bestDir = Vector3.forward;
+            float lowest = float.MaxValue;
+            for (int k = 0; k < 8; k++)
+            {
+                float a = k * Mathf.PI / 4f;
+                var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                float far = data.HeightAt(site.x + dir.x * 150f, site.z + dir.z * 150f);
+                if (far < lowest)
+                {
+                    lowest = far;
+                    bestDir = dir;
+                }
+            }
+            viewDir = bestDir;
             Vector3 right = new Vector3(viewDir.z, 0f, -viewDir.x);
             // Approach shot: the plaza rim sits on the skyline, the wellspire rises
             // behind it. Eye level, so the tower reads as tall rather than wide.
-            // Establishing aerial: the whole Well One bowl plus the spire, low sun
-            // raking across the dunes.
-            var camPos = site + viewDir * 175f + right * 65f;
-            camPos.y = site.y + 85f;
-            Vector3 towerAim = site + right * 26f + Vector3.up * 30f;
+            // Arrival: the plaza bowl in the foreground, the spire rising behind it.
+            // The camera sits 8 m up so the ring wall does not hide the plaza floor.
+            var camPos = site - viewDir * 50f;
+            camPos.y = data.HeightAt(camPos.x, camPos.z) + 8f;
+            Vector3 towerAim = site + Vector3.up * 6f;
             float yaw = Yaw(site - camPos);
             float pitch = PitchTo(camPos, towerAim);
 
@@ -200,7 +234,7 @@ namespace AI003.EditorTools
             var plaza = AshkarProps.WellOne(Ground(data, site), 24f, brick, wood, bell);
             plaza.transform.SetParent(props.transform, true);
 
-            var spirePos = Ground(data, site + right * 26f);
+            var spirePos = Ground(data, site + viewDir * 120f);
             var spire = AshkarProps.Wellspire(spirePos, 95f, body, trim);
             spire.transform.SetParent(props.transform, true);
 
@@ -234,7 +268,7 @@ namespace AI003.EditorTools
             Debug.Log($"[AI003][ASHKAR] S1 cam={camPos} yaw={yaw:F1} pitch={pitch:F1} site={site} " +
                       $"plaza={plaza.transform.position} spire={spirePos} dist={(site - camPos).magnitude:F0}");
             // Dawn: low contrast, cool shadows, thin ground haze.
-            string path = Shot(outDir, "s1_dawn", camPos, yaw, pitch, 52f, look, terrain, null);
+            string path = Shot(outDir, "s1_dawn", camPos, yaw, pitch, 56f, look, terrain, null);
             UnityEngine.Object.DestroyImmediate(props);
             return path;
         }
@@ -245,8 +279,13 @@ namespace AI003.EditorTools
             Vector3 spot = FindSaltFlat(data);
             var props = new GameObject("S4Props");
 
-            var crystal = AshkarProps.Emissive("Coldfire",
-                new Color(0.12f, 0.34f, 0.31f), new Color(0.30f, 0.85f, 0.78f) * 0.5f);
+            var crystalShader = Shader.Find("AI003/AshkarCrystal");
+            var crystal = new Material(crystalShader) { name = "Coldfire" };
+            crystal.SetColor("_BaseColor", new Color(0.10f, 0.30f, 0.28f));
+            crystal.SetColor("_EmissionColor", new Color(0.30f, 0.90f, 0.82f));
+            crystal.SetFloat("_EmissionStrength", 0.85f);
+            crystal.SetColor("_FresnelColor", new Color(0.55f, 0.95f, 0.90f));
+            crystal.SetFloat("_FresnelPower", 2.6f);
             var robe = AshkarProps.Material("Robes", new Color(0.04f, 0.05f, 0.06f), 0.1f);
 
             var cluster = AshkarProps.CrystalCluster(Ground(data, spot), 9, 3.0f, crystal, 7);
@@ -590,6 +629,49 @@ namespace AI003.EditorTools
 
             lookDir = bestDir;
             return bestPoint;
+        }
+
+        /// <summary>Broadest flat shelf in the mid desert: a plaza needs level ground.</summary>
+        private static Vector3 FindFlatSite(WorldData data)
+        {
+            float half = data.SizeMeters * 0.5f;
+            Vector3 best = new Vector3(0f, data.HeightAt(0f, 0f), 0f);
+            float bestDeviation = float.MaxValue;
+
+            for (float z = -half + 250f; z < half - 250f; z += 20f)
+            {
+                for (float x = -half + 250f; x < half - 250f; x += 20f)
+                {
+                    float h = data.HeightAt(x, z);
+                    if (h < 30f || h > 105f)
+                    {
+                        continue;
+                    }
+
+                    int ix = Mathf.Clamp(Mathf.RoundToInt((x + half) / data.CellSize), 0, data.Resolution - 1);
+                    int iz = Mathf.Clamp(Mathf.RoundToInt((z + half) / data.CellSize), 0, data.Resolution - 1);
+                    byte biome = data.Biomes[iz * data.Resolution + ix];
+                    if (biome != 2 && biome != 3)
+                    {
+                        continue;
+                    }
+
+                    float deviation = 0f;
+                    for (int k = 0; k < 8; k++)
+                    {
+                        float a = k * Mathf.PI / 4f;
+                        deviation += Mathf.Abs(data.HeightAt(x + Mathf.Cos(a) * 70f, z + Mathf.Sin(a) * 70f) - h);
+                    }
+
+                    if (deviation < bestDeviation)
+                    {
+                        bestDeviation = deviation;
+                        best = new Vector3(x, h, z);
+                    }
+                }
+            }
+
+            return best;
         }
 
         /// <summary>A flat spot just above the salt sea, for the night frame.</summary>

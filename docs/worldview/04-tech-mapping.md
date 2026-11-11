@@ -152,10 +152,10 @@ S1/S2/S4 可以**离线单机**完成（不依赖服务器）；S3/S5/S6 需要�
 
 | 里程碑 | 状态 | 证据 |
 | --- | --- | --- |
-| M1 主题与光 | ✅ 第一版 | `WorldTheme` + `AshkarSky` + `AshkarTerrain` + 曲率 AO；三张引擎帧 |
-| M2 地标与道具 | ✅ 第一版 | `AshkarProps`：井塔 / 第一井 / 帆撬 / 人形 / 冷火晶簇 |
-| M3 物理 | ✅ 帆撬 | `SailSled` + `SailSledTests`（PlayMode 3/3 通过） |
-| M4 网络 | ⬜ 未开始 | 需要 `world.tide` / `world.elder` / `world.node` 报文 |
+| M1 主题与光 | ✅ | `WorldTheme`（曲率 AO）+ `AshkarSky`（双日/尘层/星空）+ `AshkarTerrain`（沙纹/细节法线/高度雾/附加光）+ 后期 |
+| M2 地标与道具 | ✅ | `AshkarProps`：井塔 / 第一井 / 帆撬 / 人形 / 冷火晶簇（含点光源） |
+| M3 物理 | ✅ | `SailSled` + `SailSledTests`（PlayMode 3/3 通过） |
+| M4 网络 | ⬜ | 需要 `world.tide` / `world.elder` / `world.node` 报文，属下一阶段 |
 
-已知未收口：S1 的机位与地标遮挡、分层高度雾、沙丘近景细分、冷火过曝。
-这些是下一轮的美术/技术细项，不影响已通过的验收项（世界/物理/截图/测试）。
+遗留只有两项，且都受"共享世界数据不能动"约束：地形几何仍是 4 m/顶点；
+地平线仍是盐海与天空的真实分界（要更软需要真体积雾，而不是高度雾）。
