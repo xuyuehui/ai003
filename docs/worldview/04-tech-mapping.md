@@ -155,7 +155,7 @@ S1/S2/S4 可以**离线单机**完成（不依赖服务器）；S3/S5/S6 需要�
 | M1 主题与光 | ✅ | `WorldTheme`（曲率 AO）+ `AshkarSky`（双日/尘层/星空）+ `AshkarTerrain`（沙纹/细节法线/高度雾/附加光）+ 后期 |
 | M2 地标与道具 | ✅ | `AshkarProps`：井塔 / 第一井 / 帆撬 / 人形 / 冷火晶簇（含点光源） |
 | M3 物理 | ✅ | `SailSled` + `SailSledTests`（PlayMode 3/3 通过） |
-| M4 网络 | ⬜ | 需要 `world.tide` / `world.elder` / `world.node` 报文，属下一阶段 |
+| M4 网络 | ✅ | 快照里的 `world` 对象：`tide` 沙暴墙（服务器算位置）、`elder` 过境、`nodes` 渊盐占领；Unity `WorldEvents` 渲染，Go 单测覆盖扫过距离/占领/过境 |
 
 遗留只有两项，且都受"共享世界数据不能动"约束：地形几何仍是 4 m/顶点；
 地平线仍是盐海与天空的真实分界（要更软需要真体积雾，而不是高度雾）。

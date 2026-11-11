@@ -187,6 +187,17 @@ func TestSnapshotCarriesBothPlayers(t *testing.T) {
 		if _, ok := seen[secondID]; !ok {
 			t.Fatalf("snapshot missing %s: %+v", secondID, snapshot.Players)
 		}
+
+		// World events ride along in the same packet.
+		if snapshot.World == nil {
+			t.Fatalf("snapshot missing world events: %+v", snapshot)
+		}
+		if len(snapshot.World.Nodes) != 6 {
+			t.Fatalf("world nodes = %d, want 6", len(snapshot.World.Nodes))
+		}
+		if !snapshot.World.Tide.Active {
+			t.Fatalf("tide should be active at the start of a run: %+v", snapshot.World.Tide)
+		}
 	}
 }
 

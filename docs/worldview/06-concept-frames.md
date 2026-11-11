@@ -74,7 +74,7 @@
 
 ## 引擎实拍
 
-三张**真实引擎渲染**（Unity 6 / URP 17.6，1920×804，2.39:1），由
+四张**真实引擎渲染**（Unity 6 / URP 17.6，1920×804，2.39:1），由
 `AI003.EditorTools.AshkarStill` 用现有 `world/` 数据 + 阿什卡主题 + 程序化地标生成，
 批处理一次跑完（`Unity.exe -batchmode -executeMethod AI003.EditorTools.AshkarStill.Run`）。
 
@@ -96,6 +96,14 @@
 ![Unity S4](../images/worldview/engine-s4.jpg)
 
 双月、星空、盐滩上的冷火晶簇及其在盐壳上的投影，右侧是人形剪影。
+
+### S5 · 大潮
+
+![Unity S5](../images/worldview/engine-s5.jpg)
+
+沙暴墙压过来，太阳被墙吃成一颗暗红的点，沙丘只剩剪影。**这张不是手摆的**：
+它走的是客户端真实链路 —— 给 `WorldEvents.Apply()` 喂一份和网关同格式的 `world` 载荷，
+由 `AI003/TideWall` 着色器渲染，所以线上看到的就是这张的样子。
 
 **已经对上的**：主题色板（同一份地形数据，不改共享文件）、双日与第二盏方向光、
 沙纹法线、曲率 AO、ACES + Bloom + 分离色调 + 颗粒 + 暗角、2.39:1 直出、

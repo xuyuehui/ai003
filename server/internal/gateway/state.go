@@ -68,6 +68,9 @@ type Snapshot struct {
 	Tick       uint64           `json:"tick"`
 	ServerTime int64            `json:"serverTime"`
 	Players    []SnapshotPlayer `json:"players"`
+	// World carries the server-authoritative environment events (tide, elder,
+	// salt nodes) in the same packet, so one snapshot is enough for a demo.
+	World *WorldState `json:"world,omitempty"`
 }
 
 // Hub owns the authoritative player table.
@@ -83,6 +86,8 @@ type Hub struct {
 
 	stop chan struct{}
 	once sync.Once
+
+	sim *WorldSim
 }
 
 // NewHub builds a hub that broadcasts every interval.
@@ -96,6 +101,7 @@ func NewHub(logger *slog.Logger, interval time.Duration) *Hub {
 		players:  make(map[string]*Player),
 		subs:     make(map[string]func(Message)),
 		stop:     make(chan struct{}),
+		sim:      NewWorldSim(0, 0),
 	}
 }
 
@@ -131,7 +137,27 @@ func (h *Hub) broadcast() {
 	for _, send := range h.subs {
 		subs = append(subs, send)
 	}
+	players := make([]*Player, 0, len(h.players))
+	for _, p := range h.players {
+		players = append(players, p)
+	}
 	h.mu.Unlock()
+
+	if h.sim != nil {
+		state := h.sim.Advance(time.Now(), func(x, z float64) string {
+			bestID := ""
+			bestDist := NodeCaptureRadius
+			for _, p := range players {
+				d := math.Hypot(p.State.Pos.X-x, p.State.Pos.Z-z)
+				if d < bestDist {
+					bestDist = d
+					bestID = p.ID
+				}
+			}
+			return bestID
+		})
+		snapshot.World = &state
+	}
 
 	if len(subs) == 0 {
 		return

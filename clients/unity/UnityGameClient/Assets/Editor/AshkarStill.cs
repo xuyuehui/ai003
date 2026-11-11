@@ -124,6 +124,7 @@ namespace AI003.EditorTools
             Run("S2", () => paths.Add(RenderS2(data, terrain, outDir, site, viewDir)));
             Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
             Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
+            Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir)));
 
             UnityEngine.Object.DestroyImmediate(root);
             return paths.ToArray();
@@ -342,6 +343,69 @@ namespace AI003.EditorTools
                       $"h={(data.HeightAt(spot.x, spot.z)):F1} dist={(spot - camPos).magnitude:F0}");
             string path = Shot(outDir, "s4_night", camPos, yaw, pitch, 38f, look, terrain, null);
             UnityEngine.Object.DestroyImmediate(props);
+            return path;
+        }
+
+        // ------------------------------------------------------------- S5 ---
+        private static string RenderS5(WorldData data, WorldTerrain terrain, string outDir, Vector3 site,
+            Vector3 viewDir)
+        {
+            // Feed the real client path (WorldEvents) a synthetic gateway payload:
+            // the same code that renders the live tide renders this frame.
+            var payload = new Newtonsoft.Json.Linq.JObject
+            {
+                ["tide"] = new Newtonsoft.Json.Linq.JObject
+                {
+                    ["active"] = true,
+                    ["x"] = site.x + 520f,
+                    ["height"] = 360f,
+                    ["speed"] = 12f,
+                    ["eta"] = 24f,
+                },
+                ["elder"] = new Newtonsoft.Json.Linq.JObject { ["active"] = false },
+                ["nodes"] = new Newtonsoft.Json.Linq.JArray(),
+            };
+
+            var events = WorldEvents.Ensure();
+            events.Apply(payload);
+            events.SnapToServer();
+
+            // Look down the known-open fall line and hang the wall across it.
+            var camPos = new Vector3(site.x, 0f, site.z);
+            camPos.y = data.HeightAt(camPos.x, camPos.z) + 6f;
+            float yaw = Yaw(viewDir);
+            float pitch = -1.5f;
+
+            var wall = events.transform.Find("TideWall");
+            if (wall != null)
+            {
+                Vector3 wallPos = camPos + viewDir * 620f;
+                wallPos.y = data.HeightAt(wallPos.x, wallPos.z);
+                wall.position = wallPos;
+                wall.rotation = Quaternion.LookRotation(-viewDir, Vector3.up);
+            }
+
+            var look = new Look
+            {
+                zenith = FromHex("3A2E28"),
+                horizon = FromHex("C98F5C"),
+                ground = FromHex("4A3527"),
+                sunColor = FromHex("FFD9A8"),
+                sun2Color = Sun2Color,
+                fog = FromHex("B07A45"),
+                sunElevation = 12f,
+                sun2Elevation = 28f,
+                sunIntensity = 1.6f,
+                sun2Intensity = 0.20f,
+                fogStart = 220f,
+                fogEnd = 2600f,
+                exposure = -0.25f,
+                stars = 0f,
+                bloom = 0.45f,
+            };
+
+            string path = Shot(outDir, "s5_tide", camPos, yaw, pitch, 52f, look, terrain, null);
+            UnityEngine.Object.DestroyImmediate(events.gameObject);
             return path;
         }
 

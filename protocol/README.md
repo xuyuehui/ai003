@@ -177,6 +177,29 @@ v3 加入房间副本与固定 tick 的帧同步战斗（`room.*`）。每次变
 
 断线时该玩家从下一次快照起消失。
 
+### `snapshot.body.world`（服务器权威的世界事件）
+
+同一个快照里带一个可选的 `world` 对象，客户端只做插值，不做判定：
+
+```json
+"world": {
+  "elapsed": 312.5,
+  "tide": { "active": true, "x": -120.0, "height": 340.0, "speed": 12.0, "eta": 101.7 },
+  "elder": { "active": false, "x": 0, "z": 0, "progress": 0 },
+  "nodes": [
+    { "id": 0, "x": 260.0, "z": 0.0, "owner": "", "progress": 0.35 }
+  ]
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `tide` | 沙暴墙：`x` 是墙中心的 X（沿 +X 扫过 ±1100 m），`height` 米，`eta` 秒 |
+| `elder` | 长者过境：`x/z` 是路径点，`progress` 0..1 |
+| `nodes` | 渊盐点：`owner` 为玩家 id 或空，`progress` 是占领进度 0..1 |
+
+`world` 缺省时客户端应忽略（旧客户端兼容）。
+
 ## 房间与帧同步战斗（v3）
 
 房间是独立于大世界的一个小竞技场：服务器以固定 **20 Hz** tick 驱动确定性模拟，

@@ -206,6 +206,14 @@ namespace AI003.Net
         {
             if (Suspended) return;
 
+            // World events ride along in the same snapshot and are applied even
+            // while no other players are around.
+            var world = body?["world"] as JObject;
+            if (world != null)
+            {
+                AI003.World.WorldEvents.Ensure().Apply(world);
+            }
+
             var players = body?["players"] as JArray;
             if (players == null) return;
 
