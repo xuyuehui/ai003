@@ -24,6 +24,9 @@ namespace AI003.World
 
         [SerializeField] private bool _autoBuild = true;
         [SerializeField] private bool _ashkarLook = true;
+        /// <summary>Baked scenes already contain the terrain, props, lights and
+        /// post volume; they only need the player spawned at Play.</summary>
+        [SerializeField] private bool _buildTerrain = true;
 
         private GUIStyle _hudStyle;
 
@@ -69,10 +72,32 @@ namespace AI003.World
                 return;
             }
 
+            if (!_buildTerrain)
+            {
+                // Baked scene: terrain, props, lights and post already live in the
+                // scene file. We only need the data for physics queries and the
+                // player to walk around. Do NOT run ConfigureRendering here: it
+                // would disable the baked lights.
+                Terrain = UnityEngine.Object.FindAnyObjectByType<WorldTerrain>();
+                if (Terrain != null && HasBakedMeshes(Terrain))
+                {
+                    SpawnPlayer();
+                    Debug.Log($"[AI003] baked world ready: {Data.Resolution}x{Data.Resolution} vertices, spawn " +
+                              $"({Data.Spawn.x:0}, {Data.Spawn.y:0}, {Data.Spawn.z:0})");
+                    return;
+                }
+
+                // Baked meshes are git-ignored; on a fresh clone they can be
+                // missing. Fall back to building the same world at runtime.
+                Debug.LogWarning("[AI003] baked terrain meshes missing — building at runtime " +
+                                 "(run AI003/Bake Static Scene to bake them)");
+                _buildTerrain = true;
+            }
+
             ConfigureRendering();
 
-            // The Ashkar palette is a client-side skin: the shared world files are
-            // never rewritten, only the vertex colours this client builds.
+            // The Ashkar palette is a client-side skin: it only changes the vertex
+            // colours this client builds, the world files stay untouched.
             Color32[] colors = null;
             string shaderName = null;
             if (_ashkarLook)
@@ -135,6 +160,24 @@ namespace AI003.World
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.reflectionIntensity = 0.5f;
             DynamicGI.UpdateEnvironment();
+        }
+
+        /// <summary>True when every terrain chunk in the scene has its mesh asset.</summary>
+        private static bool HasBakedMeshes(WorldTerrain terrain)
+        {
+            var filters = terrain.GetComponentsInChildren<MeshFilter>(true);
+            if (filters.Length == 0)
+            {
+                return false;
+            }
+            foreach (var filter in filters)
+            {
+                if (filter.sharedMesh == null)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private void SpawnPlayer()
