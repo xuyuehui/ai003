@@ -50,6 +50,34 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 光照：一盏方向光（软阴影）+ 天空盒环境光；线性雾 320–2200 m。
 - 新增地形类型：改 Go 端调色板并重新生成，**不在客户端硬编码颜色**。
 
+### 4.1 世界主题（WorldTheme）
+
+- `Assets/Scripts/World/WorldTheme.cs`：`ScriptableObject`，持有 6 个 biome 色 + 3 个修正色，
+  运行时把 `biomes.r8` + 高度 + 坡度重采样成顶点色（线性空间），3×3 平滑避免 biome 接缝。
+- `WorldTerrain.Build(data, colorOverride, shaderName)` 是主题入口；不传时行为与旧版完全一致
+  （读 `colors.rgba8`），所以**共享的 `world/` 数据与 UE 端不受影响**。
+- 色值以 sRGB 记在主题里，写进顶点色前做 `pow(c, 2.2)`，与烘焙色板同一条路径。
+- 现有 `WorldTheme.CreateAshkar()` 就是 `docs/worldview/03-art-direction.md` 的色板。
+
+### 4.2 天空与双光
+
+- `Assets/Shaders/AshkarSky.shader`：两色渐变 + 地平线尘带 + 两个太阳圆盘与光晕，不依赖贴图。
+- 主光（赫斯）投影；第二盏方向光（维尔）**不投影**，作为暖色填充；
+  地形着色器走 `_ADDITIONAL_LIGHTS` 循环，所以第二盏光能照到地形。
+- `UniversalRenderPipelineAsset.shadowDistance` 在离屏渲染前临时调到 700 m（默认 50 m 只够角色）。
+
+### 4.3 地形着色器（AshkarTerrain）
+
+- `Assets/Shaders/AshkarTerrain.shader`：顶点色 + 世界空间沙纹法线（随距离淡出，避免摩尔纹）
+  + 包裹漫反射 + 掠射镜面 + 附加光 + 雾；ShadowCaster / DepthOnly / DepthNormals 齐备。
+- 默认 `AI003/TerrainVertexColor` 保持不变，`demo-compare` 的基线不受影响。
+
+### 4.4 离屏剧照
+
+- `AI003.EditorTools.AshkarStill.Run`：批处理渲染 `artifacts/ashkar/s2_*.png`（1920×804）。
+- 机位自动搜索：内陆、高处、前方 200–600 m 是下坡、420 m 与 900 m 处仍是陆地（避免看向盐海）。
+- 光照/后期参数在 `AshkarStill.cs` 顶部与 `BuildProfile()`，改完重跑即可。
+
 ## 5. 角色与物理
 
 | 参数 | 值 |

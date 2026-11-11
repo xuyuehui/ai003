@@ -22,8 +22,17 @@ namespace AI003.World
 
         public void Build(WorldData data)
         {
+            Build(data, null, null);
+        }
+
+        /// <summary>
+        /// Build with an optional colour override (a WorldTheme) and terrain shader.
+        /// The shared world files are never rewritten: this only changes this client's look.
+        /// </summary>
+        public void Build(WorldData data, Color32[] colorOverride, string terrainShaderName)
+        {
             Data = data;
-            TerrainMaterial = CreateTerrainMaterial();
+            TerrainMaterial = CreateTerrainMaterial(terrainShaderName);
             WaterMaterial = CreateWaterMaterial();
 
             int cellsPerChunk = (data.Resolution - 1) / ChunksPerAxis;
@@ -45,7 +54,7 @@ namespace AI003.World
                         0f,
                         -half + cz * cellsPerChunk * data.CellSize);
 
-                    Mesh mesh = BuildChunkMesh(data, cx, cz, cellsPerChunk);
+                    Mesh mesh = BuildChunkMesh(data, cx, cz, cellsPerChunk, colorOverride);
 
                     chunkObject.AddComponent<MeshFilter>().sharedMesh = mesh;
                     var renderer = chunkObject.AddComponent<MeshRenderer>();
@@ -62,6 +71,12 @@ namespace AI003.World
         }
 
         public static Mesh BuildChunkMesh(WorldData data, int chunkX, int chunkZ, int cellsPerChunk)
+        {
+            return BuildChunkMesh(data, chunkX, chunkZ, cellsPerChunk, null);
+        }
+
+        public static Mesh BuildChunkMesh(WorldData data, int chunkX, int chunkZ, int cellsPerChunk,
+            Color32[] colorOverride)
         {
             int res = data.Resolution;
             int vertsPerAxis = cellsPerChunk + 1;
@@ -88,7 +103,7 @@ namespace AI003.World
 
                     vertices[vi] = new Vector3(lx * cell, data.Heights[gi], lz * cell);
                     normals[vi] = data.NormalAt(gx, gz);
-                    colors[vi] = data.Colors[gi];
+                    colors[vi] = colorOverride != null ? colorOverride[gi] : data.Colors[gi];
                     uvs[vi] = new Vector2((float)gx / (res - 1), (float)gz / (res - 1));
                 }
             }
@@ -150,14 +165,15 @@ namespace AI003.World
             renderer.receiveShadows = false;
         }
 
-        private static Material CreateTerrainMaterial()
+        private static Material CreateTerrainMaterial(string shaderName)
         {
-            Shader shader = Shader.Find("AI003/TerrainVertexColor");
+            string wanted = string.IsNullOrEmpty(shaderName) ? "AI003/TerrainVertexColor" : shaderName;
+            Shader shader = Shader.Find(wanted);
             if (shader == null)
             {
-                throw new MissingReferenceException("shader AI003/TerrainVertexColor was not found");
+                throw new MissingReferenceException($"shader {wanted} was not found");
             }
-            var material = new Material(shader) { name = "TerrainVertexColor" };
+            var material = new Material(shader) { name = shader.name };
             material.SetFloat("_Smoothness", 0.15f);
             return material;
         }
