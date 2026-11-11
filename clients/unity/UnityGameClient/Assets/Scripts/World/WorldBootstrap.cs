@@ -117,7 +117,8 @@ namespace AI003.World
             if (_ashkarLook)
             {
                 AshkarLook.Apply(this);
-                AshkarDressing.Build(this);
+                // Set dressing is authored into the scene (menu AI003/Author Ashkar
+                // Scene) and never spawned here: Play must not rebuild the composition.
             }
 
             Debug.Log($"[AI003] world ready: {Data.SizeMeters:0} m, {Data.Resolution}x{Data.Resolution} vertices, " +

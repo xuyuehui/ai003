@@ -79,6 +79,14 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   夜景单独找"靠近盐海、地形平缓"的点。
 - 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
 
+### 4.4.1 场景元素靠编辑器摆放，不靠运行时生成
+
+- 地标（第一井、井塔、帆撬、人形）**不在 Play 时生成**：菜单 `AI003/Author Ashkar Scene`
+  把它们一次性摆进**当前打开的场景**（`[AI003] Dressing` 根节点下），网格存成
+  `Assets/Generated/Dressing/*.asset` 并打 Static 标记；之后在编辑器里随便挪、删、改，保存场景即可。
+- `WorldBootstrap` 只负责数据、地形（或烘焙场景）与玩家，**不再调用任何摆位代码**。
+- 摆放位置以 `world.json` 的出生点为基准，只在首次生成时用；后续以场景文件为准。
+
 ### 4.5 程序化地标与载具
 
 - `Assets/Scripts/World/AshkarProps.cs`：井塔（倒锥 + 平台 + 深窗）、第一井（下沉广场 + 钟架）、
