@@ -6,6 +6,10 @@ Shader "AI003/AshkarTerrain"
         _RippleStrength ("Sand Ripple Strength", Range(0, 2)) = 0.35
         _Speckle ("Speckle", Range(0, 1)) = 0.25
         _Wrap ("Diffuse Wrap", Range(0, 1)) = 0.35
+        _HeightFogColor ("Height Fog Colour", Color) = (0.9, 0.8, 0.65, 1)
+        _HeightFogStrength ("Height Fog Strength", Range(0, 1)) = 0.0
+        _HeightFogFalloff ("Height Fog Falloff", Float) = 0.012
+        _HeightFogDistance ("Height Fog Distance", Float) = 2200
     }
 
     SubShader
@@ -40,6 +44,10 @@ Shader "AI003/AshkarTerrain"
                 float _RippleStrength;
                 float _Speckle;
                 float _Wrap;
+                float4 _HeightFogColor;
+                float _HeightFogStrength;
+                float _HeightFogFalloff;
+                float _HeightFogDistance;
             CBUFFER_END
 
             struct Attributes
@@ -140,6 +148,14 @@ Shader "AI003/AshkarTerrain"
                 }
 
                 color = MixFog(color, input.fogFactor);
+
+                // Height fog: haze pools in the low ground, so distant dunes read
+                // as layers instead of a flat silhouette.
+                float lowHaze = exp(-max(input.positionWS.y, 0.0) * _HeightFogFalloff)
+                                * saturate(dist / _HeightFogDistance)
+                                * _HeightFogStrength;
+                color = lerp(color, _HeightFogColor.rgb, saturate(lowHaze));
+
                 return half4(color, 1.0);
             }
             ENDHLSL

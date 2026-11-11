@@ -181,10 +181,12 @@ namespace AI003.EditorTools
             Vector3 right = new Vector3(viewDir.z, 0f, -viewDir.x);
             // Approach shot: the plaza rim sits on the skyline, the wellspire rises
             // behind it. Eye level, so the tower reads as tall rather than wide.
-            var camPos = site + viewDir * 95f;
-            camPos.y = data.HeightAt(camPos.x, camPos.z) + 2.0f;
-            Vector3 towerAim = site + right * 24f + Vector3.up * 30f;
-            float yaw = Yaw(site + right * 12f - camPos);
+            // Establishing aerial: the whole Well One bowl plus the spire, low sun
+            // raking across the dunes.
+            var camPos = site + viewDir * 175f + right * 65f;
+            camPos.y = site.y + 85f;
+            Vector3 towerAim = site + right * 26f + Vector3.up * 30f;
+            float yaw = Yaw(site - camPos);
             float pitch = PitchTo(camPos, towerAim);
 
             var props = new GameObject("S1Props");
@@ -198,7 +200,7 @@ namespace AI003.EditorTools
             var plaza = AshkarProps.WellOne(Ground(data, site), 24f, brick, wood, bell);
             plaza.transform.SetParent(props.transform, true);
 
-            var spirePos = Ground(data, site - viewDir * 18f + right * 26f);
+            var spirePos = Ground(data, site + right * 26f);
             var spire = AshkarProps.Wellspire(spirePos, 95f, body, trim);
             spire.transform.SetParent(props.transform, true);
 
@@ -244,7 +246,7 @@ namespace AI003.EditorTools
             var props = new GameObject("S4Props");
 
             var crystal = AshkarProps.Emissive("Coldfire",
-                new Color(0.12f, 0.34f, 0.31f), new Color(0.35f, 0.95f, 0.85f) * 0.9f);
+                new Color(0.12f, 0.34f, 0.31f), new Color(0.30f, 0.85f, 0.78f) * 0.5f);
             var robe = AshkarProps.Material("Robes", new Color(0.04f, 0.05f, 0.06f), 0.1f);
 
             var cluster = AshkarProps.CrystalCluster(Ground(data, spot), 9, 3.0f, crystal, 7);
@@ -353,6 +355,13 @@ namespace AI003.EditorTools
             RenderSettings.fogStartDistance = look.fogStart;
             RenderSettings.fogEndDistance = look.fogEnd;
 
+            if (terrain != null)
+            {
+                terrain.TerrainMaterial.SetColor("_HeightFogColor", look.fog.linear);
+                terrain.TerrainMaterial.SetFloat("_HeightFogStrength", night ? 0.25f : 0.55f);
+                terrain.TerrainMaterial.SetFloat("_HeightFogDistance", look.fogEnd * 0.55f);
+            }
+
             var skyMat = new Material(Shader.Find("AI003/AshkarSky")) { name = "AshkarSky" };
             skyMat.SetColor("_Zenith", look.zenith.linear);
             skyMat.SetColor("_Horizon", look.horizon.linear);
@@ -366,6 +375,8 @@ namespace AI003.EditorTools
             skyMat.SetFloat("_Haze", night ? 0.25f : 0.45f);
             skyMat.SetFloat("_DustBand", night ? 0.05f : 0.25f);
             skyMat.SetFloat("_Stars", look.stars);
+            skyMat.SetColor("_FogColor", look.fog.linear);
+            skyMat.SetFloat("_HorizonBand", night ? 0.35f : 0.55f);
             RenderSettings.skybox = skyMat;
 
             var volumeObject = new GameObject("Volume");

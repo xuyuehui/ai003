@@ -14,6 +14,8 @@ Shader "AI003/AshkarSky"
         _Haze ("Horizon Haze", Float) = 0.55
         _DustBand ("Dust Band", Float) = 0.35
         _Stars ("Stars", Float) = 0
+        _FogColor ("Horizon Fog Colour", Color) = (0.9, 0.8, 0.65, 1)
+        _HorizonBand ("Horizon Band", Float) = 0.5
     }
 
     SubShader
@@ -59,6 +61,8 @@ Shader "AI003/AshkarSky"
                 float _Haze;
                 float _DustBand;
                 float _Stars;
+                float4 _FogColor;
+                float _HorizonBand;
             CBUFFER_END
 
             Varyings vert(Attributes input)
@@ -82,6 +86,11 @@ Shader "AI003/AshkarSky"
                 // A broad, soft dust band just above the horizon.
                 float band = exp(-pow((d.y - 0.06) * 9.0, 2.0)) * _DustBand;
                 sky += _Horizon.rgb * band * 0.35;
+
+                // Knit the sky into the fogged ground: without this the sea
+                // horizon reads as a hard band of colour.
+                float knit = exp(-abs(d.y) * 90.0) * _HorizonBand;
+                sky = lerp(sky, _FogColor.rgb, saturate(knit));
 
                 // Below the horizon: ground haze, not a hard cut.
                 float g = saturate(-d.y * 2.5);
