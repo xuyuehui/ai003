@@ -31,6 +31,26 @@
 
 架构、验证矩阵与演示场景详见 [docs/architecture.md](docs/architecture.md)。
 
+## 世界观：《鸣沙》
+
+演示的外壳是一颗旱海行星 **阿什卡**：双日、干盐海、会"呼吸"的沙海 **长眠海**、沙下的 **渊盐（冷火）**、
+随振动而来的巨兽 **鸣沙兽**，以及周期扫过盆地的沙暴 **大潮**。
+它只负责三件事：给渲染一个统一的色与光、给物理一个统一的接触面、给网络同步一个所有人都能一眼看懂的事件。
+
+设计文档集见 [docs/worldview/](docs/worldview/README.md)（世界观、势力与器物、美术方向、技术映射、法律清单）。
+
+![阿什卡 · 白喉盆地](docs/images/worldview/ashkar-basin.png)
+
+> 上图由 `scripts/worldview-preview.py` 用**现有 `world/` 数据 + 新色板重打光**生成，
+> 证明"换一层美术语言"不需要先换地形。Phase 1 只出设计，不改数据、不改代码；
+> Unity 落地在 Phase 2，UE5 对齐在 Phase 3。
+
+最终效果的概念参考（2.39:1 关键帧，非引擎渲染）：
+
+![关键帧](docs/images/worldview/concept/contact-sheet.jpg)
+
+见 [06-concept-frames.md](docs/worldview/06-concept-frames.md)。
+
 ## 30 秒演示（无需引擎）
 
 ```powershell
