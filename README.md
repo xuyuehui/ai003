@@ -290,12 +290,12 @@ ai003/
 | 文件 | 内容 |
 | --- | --- |
 | `world/world.json` | 元数据：seed、尺寸、分辨率、海平面、出生点、文件名 |
-| `world/heightmap.f32` | 513×513 的 float32（小端、行优先，单位米），Y 轴向上 |
+| `world/heightmap.f32` | 1025×1025 的 float32（小端、行优先，单位米），Y 轴向上 |
 | `world/colors.rgba8` | 每顶点线性空间 RGBA，两端直接做为顶点色使用 |
 | `world/biomes.r8` | 每顶点生物群系 id（海洋/沙滩/草地/沙漠/岩石/雪），用于调试与 HUD |
 | `world/preview.png` | 俯视山体阴影图，便于不启动引擎时检查世界 |
 
-- 当前世界：seed `20261103`，2048 m × 2048 m，4 m/格，海平面 0 m，最高峰约 396 m；
+- 当前世界：seed `20261103`，2048 m × 2048 m，2 m/格，海平面 0 m，最高峰约 396 m；
   海洋 42%、草地 34%、沙漠 7%、岩石 12%、雪 2%
 - 出生点由生成器挑选：海平面以上、坡度 < 15°、半径 30 m 内全是干燥陆地
 - 两端都把米换算成自己的单位（Unity 米 / UE 厘米），并直接读取同一份顶点色，
@@ -400,7 +400,7 @@ cd server; go run ./cmd/pingclient -n 3  # 期望 SMOKE OK
 按 Play 也能直接进世界。`ConnectionBootstrap` 同时自动挂载并连接网关，Console 里可见：
 
 ```
-[AI003] world ready: 2048 m, 513x513 vertices, 256 chunks, spawn (168, 40, -8)
+[AI003] world ready: 2048 m, 1025x1025 vertices, 64 chunks, spawn (38, 46, -88)
 [AI003] connected to ws://127.0.0.1:8080/ws
 [AI003] pong seq=1 rtt=1ms
 ```

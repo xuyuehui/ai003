@@ -189,9 +189,19 @@ namespace AI003.World
             root.transform.position = position;
 
             Part("Floor", root.transform, Frustum(radius, radius, 0.4f, 32, true, false),
-                saltBrick, new Vector3(0f, -0.4f, 0f));
-            Part("Ring", root.transform, Frustum(radius, radius * 1.04f, 3.2f, 32, false, false),
+                saltBrick, new Vector3(0f, -0.9f, 0f));
+            Part("Ring", root.transform, Frustum(radius, radius * 1.02f, 1.4f, 32, false, false),
                 saltBrick, new Vector3(0f, 0f, 0f));
+
+            // Low pilasters around the parapet: without them the ring reads as a
+            // plain white drum from any distance.
+            for (int i = 0; i < 12; i++)
+            {
+                float a = i / 12f * Mathf.PI * 2f;
+                Part($"Pilaster{i}", root.transform, Box(new Vector3(0.7f, 2.0f, 0.7f)),
+                    saltBrick, new Vector3(Mathf.Cos(a) * radius, 1.0f, Mathf.Sin(a) * radius),
+                    new Vector3(0f, -a * Mathf.Rad2Deg, 0f));
+            }
 
             for (int i = 0; i < 4; i++)
             {

@@ -3,15 +3,15 @@
   "name": "ai003-open-world",
   "seed": 20261103,
   "sizeMeters": 2048,
-  "resolution": 513,
-  "cellSize": 4,
+  "resolution": 1025,
+  "cellSize": 2,
   "seaLevel": 0,
-  "minHeight": -75.51506489500223,
-  "maxHeight": 395.51410653814116,
+  "minHeight": -75.5154078851767,
+  "maxHeight": 395.626362320834,
   "spawn": {
-    "x": 168,
-    "y": 39.68063735961914,
-    "z": -8
+    "x": 38,
+    "y": 45.570343017578125,
+    "z": -88
   },
   "files": {
     "biomes": "biomes.r8",

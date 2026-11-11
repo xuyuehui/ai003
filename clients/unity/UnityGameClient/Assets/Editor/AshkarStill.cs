@@ -224,7 +224,7 @@ namespace AI003.EditorTools
             float pitch = PitchTo(camPos, towerAim);
 
             var props = new GameObject("S1Props");
-            var brick = AshkarProps.Material("SaltBrick", new Color(0.52f, 0.50f, 0.45f), 0.18f);
+            var brick = AshkarProps.Material("SaltBrick", new Color(0.40f, 0.38f, 0.34f), 0.18f);
             var wood = AshkarProps.Material("WeatheredWood", new Color(0.20f, 0.16f, 0.12f), 0.12f);
             var bell = AshkarProps.Material("BellBronze", new Color(0.35f, 0.28f, 0.16f), 0.55f, 0.7f);
             var body = AshkarProps.Material("BasaltBody", new Color(0.14f, 0.12f, 0.10f), 0.2f);
@@ -396,9 +396,21 @@ namespace AI003.EditorTools
 
             if (terrain != null)
             {
+                // The screen-space fog pass does the heavy lifting now; keep only a
+                // little per-pixel haze for the shadowed dune faces.
                 terrain.TerrainMaterial.SetColor("_HeightFogColor", look.fog.linear);
-                terrain.TerrainMaterial.SetFloat("_HeightFogStrength", night ? 0.25f : 0.55f);
+                terrain.TerrainMaterial.SetFloat("_HeightFogStrength", night ? 0.10f : 0.22f);
                 terrain.TerrainMaterial.SetFloat("_HeightFogDistance", look.fogEnd * 0.55f);
+            }
+
+            var fogMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Settings/HeightFog.mat");
+            if (fogMaterial != null)
+            {
+                fogMaterial.SetColor("_FogColor", look.fog);
+                fogMaterial.SetFloat("_Density", night ? 0.0008f : 0.0016f);
+                fogMaterial.SetFloat("_Falloff", 0.020f);
+                fogMaterial.SetFloat("_StartDistance", 120f);
+                fogMaterial.SetFloat("_BaseHeight", 0f);
             }
 
             var skyMat = new Material(Shader.Find("AI003/AshkarSky")) { name = "AshkarSky" };

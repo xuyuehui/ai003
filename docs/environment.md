@@ -72,7 +72,7 @@ UE 5.8 的要求：Windows SDK ≥ 10.0.19041（首选 10.0.22621），MSVC ≥ 
 | Go 健康检查 | `GET /healthz` | `{"status":"ok",...}` |
 | Go ping 客户端 | `go run ./cmd/pingclient` | 3/3 pong，SMOKE OK |
 | Unity 批处理冒烟 | `scripts/smoke-unity.ps1` | 3/3 pong，`[AI003][SMOKE] PASS` |
-| Unity 世界数据 + 网格校验 | `AI003.EditorTools.WorldSmokeTest.Run` | PASS（513² 顶点、64 块、群系齐全） |
+| Unity 世界数据 + 网格校验 | `AI003.EditorTools.WorldSmokeTest.Run` | PASS（1025² 顶点、64 块、群系齐全） |
 | Unity PlayMode 测试 | `scripts/test-unity-playmode.ps1` | 2/2 passed（连接 + 世界落地/跑动） |
 | UE5 头less 联网冒烟 | `scripts/smoke-ue5.ps1` | 3/3 pong，`[AI003][SMOKE] PASS` |
 | UE5 头less 世界冒烟 | `scripts/smoke-ue5-world.ps1` | PASS（落地 96 cm，1.5 s 跑 653 cm） |
@@ -95,7 +95,7 @@ UE 5.8 的要求：Windows SDK ≥ 10.0.19041（首选 10.0.22621），MSVC ≥ 
 | 文件 | 大小 | 格式 |
 | --- | --- | --- |
 | `world.json` | 436 B | seed / 尺寸 / 分辨率 / 海平面 / 出生点 |
-| `heightmap.f32` | 1,052,676 B | 513×513 float32 小端，行优先，单位米 |
+| `heightmap.f32` | 4,202,500 B | 1025×1025 float32 小端，行优先，单位米 |
 | `colors.rgba8` | 1,052,676 B | 每顶点线性 RGBA |
 | `biomes.r8` | 263,169 B | 每顶点群系 id |
 | `preview.png` | ~236 KB | 俯视山体阴影图 |
