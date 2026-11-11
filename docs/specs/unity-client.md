@@ -79,6 +79,14 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   夜景单独找"靠近盐海、地形平缓"的点。
 - 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
 
+### 4.4.-2 玩家是场景里的预制体实例
+
+- 菜单 `AI003/Author Player` 通过运行时的同一个工厂（`WorldBootstrap.CreatePlayerObject`）
+  造一份玩家，存成 `Assets/Prefabs/AshkarPlayer.prefab`，再在出生点实例化。
+- Play 时 `WorldBootstrap` 优先复用场景里的 `ThirdPersonController`，只在没有时新建。
+- `Assets/Tests/PlayMode/AuthoredSceneTests.cs` 守这条约定：加载 `OpenWorld` 后必须
+  只有 1 个玩家、1 台相机、1 个 bootstrap。
+
 ### 4.4.-1 主相机也在场景里
 
 - 菜单 `AI003/Author Main Camera` 把 `Main Camera`（`Camera` + `OrbitCamera`，`MainCamera` 标签）

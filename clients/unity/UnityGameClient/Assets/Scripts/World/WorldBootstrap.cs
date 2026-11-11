@@ -215,23 +215,27 @@ namespace AI003.World
 
         private void SpawnPlayer()
         {
-            var playerObject = new GameObject("[AI003] Player");
-            playerObject.transform.position = Data.Spawn + Vector3.up * 1.2f;
+            // A player authored in the scene (menu AI003/Author Player) wins: Play
+            // must not create a second character on top of it.
+            var authored = UnityEngine.Object.FindAnyObjectByType<ThirdPersonController>(
+                FindObjectsInactive.Include);
+            GameObject playerObject;
+            if (authored != null)
+            {
+                Player = authored;
+                playerObject = authored.gameObject;
+                if (!playerObject.activeSelf)
+                {
+                    playerObject.SetActive(true);
+                }
+            }
+            else
+            {
+                Player = CreatePlayerObject(Data, Data.Spawn + Vector3.up * 1.2f, out playerObject);
+            }
 
-            var controller = playerObject.AddComponent<CharacterController>();
-            controller.height = 1.8f;
-            controller.radius = 0.35f;
-            controller.center = new Vector3(0f, 0.9f, 0f);
-            controller.slopeLimit = 48f;
-            controller.stepOffset = 0.45f;
-            controller.skinWidth = 0.03f;
-            controller.minMoveDistance = 0f;
-
-            Player = playerObject.AddComponent<ThirdPersonController>();
             Player.World = Data;
             Player.SeaLevel = Data.SeaLevel;
-
-            AttachCharacter(playerObject);
 
             // Reuse the camera authored in the scene; only build one when absent
             // (menu AI003/Author Main Camera creates it).
@@ -265,11 +269,46 @@ namespace AI003.World
             CameraRig.Snap();
         }
 
+        /// <summary>Builds a complete player object; used by Play and by the authoring tool.</summary>
+        public static ThirdPersonController CreatePlayerObject(WorldData data, Vector3 position, out GameObject go)
+        {
+            go = new GameObject("[AI003] Player");
+            go.transform.position = position;
+
+            var controller = go.AddComponent<CharacterController>();
+            controller.height = 1.8f;
+            controller.radius = 0.35f;
+            controller.center = new Vector3(0f, 0.9f, 0f);
+            controller.slopeLimit = 48f;
+            controller.stepOffset = 0.45f;
+            controller.skinWidth = 0.03f;
+            controller.minMoveDistance = 0f;
+
+            var player = go.AddComponent<ThirdPersonController>();
+            player.World = data;
+            player.SeaLevel = data.SeaLevel;
+
+            AttachCharacter(go, player);
+            return player;
+        }
+
+        private static void Kill(UnityEngine.Object target)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
+            }
+        }
+
         /// <summary>
         /// Spawns the Kenney protagonists model (Resources) under the controller and
         /// wires its animator; falls back to the old capsule if the asset is missing.
         /// </summary>
-        private void AttachCharacter(GameObject playerObject)
+        private static void AttachCharacter(GameObject playerObject, ThirdPersonController player)
         {
             const string root = "Characters/KenneyProtagonists/";
             GameObject prefab = Resources.Load<GameObject>(root + "Player");
@@ -278,7 +317,7 @@ namespace AI003.World
                 Debug.LogWarning("[AI003] player prefab missing, using capsule fallback (run SetupPlayerCharacter)");
                 GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 body.name = "Body";
-                Destroy(body.GetComponent<Collider>());
+                Kill(body.GetComponent<Collider>());
                 body.transform.SetParent(playerObject.transform, false);
                 body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
                 body.transform.localScale = new Vector3(0.72f, 0.9f, 0.72f);
@@ -296,11 +335,11 @@ namespace AI003.World
 
             foreach (var collider in model.GetComponentsInChildren<Collider>())
             {
-                Destroy(collider);
+                Kill(collider);
             }
 
             var animation = model.AddComponent<PlayerAnimation>();
-            animation.Controller = Player;
+            animation.Controller = player;
         }
 
         private static Material CreateLitMaterial(Color color)

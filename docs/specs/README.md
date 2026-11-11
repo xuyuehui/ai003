@@ -6,9 +6,13 @@
 | --- | --- | --- |
 | Go 服务器 | [go-server.md](go-server.md) | Go 1.26.3 · `module ai003/server` |
 | Unity 客户端 | [unity-client.md](unity-client.md) | Unity 6000.6.6f1 · URP 17.6 |
+| Unity 开放大世界 | [unity-open-world.md](unity-open-world.md) | 8 km · 128 m 瓦片 · 四叉树 clipmap |
 | UE5 客户端 | [ue5-client.md](ue5-client.md) | Unreal Engine 5.8 · C++20 |
 | 共享协议 | [../../protocol/README.md](../../protocol/README.md) | WebSocket JSON v1 |
 | MCP | [../mcp.md](../mcp.md) | EngineWire 0.6.0 / MCP for Unity 10.3.0 |
+
+开放大世界的逐步骤实施手册见 [unity-open-world-steps.md](unity-open-world-steps.md)；
+地形内容的制作流水线（含业界参考）见 [terrain-production-pipeline.md](terrain-production-pipeline.md)。
 
 ## 仓库级约定
 

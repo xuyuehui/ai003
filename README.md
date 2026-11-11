@@ -501,7 +501,7 @@ Restricted，`.cmd` 会自动带 `-ExecutionPolicy Bypass`）。
 | UE 光照观感 | 色调偏灰、角色背光面偏暗，天空/雾还在调 | 对齐 Unity 的曝光与补光，必要时加后处理体积 |
 | 水下物理 | Unity 有游泳浮力，UE 仍是"水下行走" | UE 补 `MOVE_Swimming` 或自定义浮力 |
 | 地形精度 | 4 m 网格、平滑着色，近看缺少细节 | 加贴图/法线细节或提高分辨率 + LOD |
-| 世界加载 | Unity 有 128 m chunk 流式 + LOD；UE 8×8 chunk 懒加载 + 三级 LOD（≤450/900/1400 m） | 已满足演示需求 |
+| 世界加载 | Unity 仍是 2 km 全量构建/烘焙（无 LOD、无流式）；UE 8×8 chunk 懒加载 + 三级 LOD（≤450/900/1400 m） | 见 [开放大世界管线](docs/specs/unity-open-world.md)（8 km + clipmap 流式） |
 | 房间传输 | 房间消息默认走**可信赖 UDP**（序号/ACK/重传/乱序/去重/分片），WS 保留为大厅/世界同步与回退 | 可继续加拥塞控制/加密 |
 
 ## 接下来（按技术演示排序）
