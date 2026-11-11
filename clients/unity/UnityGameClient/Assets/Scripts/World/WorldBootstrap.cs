@@ -23,6 +23,7 @@ namespace AI003.World
         public bool IsReady => Data != null && Player != null;
 
         [SerializeField] private bool _autoBuild = true;
+        [SerializeField] private bool _ashkarLook = true;
 
         private GUIStyle _hudStyle;
 
@@ -70,12 +71,29 @@ namespace AI003.World
 
             ConfigureRendering();
 
+            // The Ashkar palette is a client-side skin: the shared world files are
+            // never rewritten, only the vertex colours this client builds.
+            Color32[] colors = null;
+            string shaderName = null;
+            if (_ashkarLook)
+            {
+                var theme = WorldTheme.CreateAshkar();
+                colors = theme.BuildColorGrid(Data);
+                shaderName = "AI003/AshkarTerrain";
+            }
+
             var terrainObject = new GameObject("[AI003] Terrain");
             terrainObject.transform.SetParent(transform, false);
             Terrain = terrainObject.AddComponent<WorldTerrain>();
-            Terrain.Build(Data);
+            Terrain.Build(Data, colors, shaderName);
 
             SpawnPlayer();
+
+            if (_ashkarLook)
+            {
+                AshkarLook.Apply(this);
+                AshkarDressing.Build(this);
+            }
 
             Debug.Log($"[AI003] world ready: {Data.SizeMeters:0} m, {Data.Resolution}x{Data.Resolution} vertices, " +
                       $"{Terrain.ChunkCount} chunks, spawn ({Data.Spawn.x:0}, {Data.Spawn.y:0}, {Data.Spawn.z:0})");

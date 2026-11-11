@@ -70,9 +70,11 @@ namespace AI003.World
                 uvs[next] = new Vector2(0.5f, 0.5f);
                 for (int i = 0; i < segments; i++)
                 {
+                    // Wound so the cap faces up; the other order culls and the
+                    // plaza floor reads as a black hole.
                     tris.Add(ringVerts + i);
-                    tris.Add(next);
                     tris.Add(ringVerts + i + 1);
+                    tris.Add(next);
                 }
                 next++;
             }
