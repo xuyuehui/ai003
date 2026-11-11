@@ -79,6 +79,15 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   夜景单独找"靠近盐海、地形平缓"的点。
 - 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
 
+### 4.4.0 地形也是静态的（烘焙进场景）
+
+- 菜单 `AI003/Bake Terrain (static)` 把 64 块地形网格（1025²，2 m/顶点）写成
+  `Assets/Generated/Terrain/*.asset`，`[AI003] Terrain` 作为普通场景物体存在，
+  并给每个 chunk 打 Static 标记；`WorldBootstrap._buildTerrain` 置为 false。
+- Play 时只生成玩家与相机，**不再生成地形**。
+- 烘焙产物约 97 MB，放在 `Assets/Generated/` 且**不进版本库**；换机器后跑一次该菜单即可。
+  若网格缺失，`WorldBootstrap` 会自动回退到运行时构建（不会白屏）。
+
 ### 4.4.1 场景元素靠编辑器摆放，不靠运行时生成
 
 - 地标（第一井、井塔、帆撬、人形）**不在 Play 时生成**：菜单 `AI003/Author Ashkar Scene`

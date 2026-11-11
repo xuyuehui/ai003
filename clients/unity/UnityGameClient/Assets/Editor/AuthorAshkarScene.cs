@@ -23,7 +23,14 @@ namespace AI003.EditorTools
         [MenuItem("AI003/Author Ashkar Scene")]
         public static void Run()
         {
+            // Start clean: reusing meshes by name silently swapped different
+            // geometry between props (a 40 m plaza floor ended up on a figure).
+            if (AssetDatabase.IsValidFolder(MeshDir))
+            {
+                AssetDatabase.DeleteAsset(MeshDir);
+            }
             Directory.CreateDirectory(MeshDir);
+            AssetDatabase.Refresh();
 
             var data = WorldData.Load(Path.Combine(Application.streamingAssetsPath, "world"));
             var spawn = data.Spawn;
@@ -71,24 +78,26 @@ namespace AI003.EditorTools
 
         private static void PersistMeshes(GameObject root)
         {
-            var seen = new HashSet<Mesh>();
+            var saved = new Dictionary<Mesh, Mesh>();
+            int index = 0;
             foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
             {
                 Mesh mesh = filter.sharedMesh;
-                if (mesh == null || !seen.Add(mesh))
+                if (mesh == null)
                 {
                     continue;
                 }
-
-                string path = $"{MeshDir}/{Sanitize(mesh.name)}.asset";
-                var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-                if (existing != null)
+                if (!saved.TryGetValue(mesh, out var asset))
                 {
-                    filter.sharedMesh = existing;
-                    continue;
+                    // Unique name per mesh instance: never match by mesh.name,
+                    // generated meshes all share a handful of names.
+                    string path = $"{MeshDir}/{index:00}_{Sanitize(mesh.name)}.asset";
+                    AssetDatabase.CreateAsset(mesh, path);
+                    asset = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+                    saved[mesh] = asset;
+                    index++;
                 }
-                AssetDatabase.CreateAsset(mesh, path);
-                filter.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+                filter.sharedMesh = asset;
             }
             AssetDatabase.SaveAssets();
         }
