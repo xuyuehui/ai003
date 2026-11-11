@@ -8,10 +8,14 @@ namespace AI003.Player
     {
         public Transform Target;
         public float Distance = 6.5f;
-        public float PivotHeight = 1.55f;
+        /// <summary>Chest height; the camera looks slightly above it so the head stays in frame.</summary>
+        public float PivotHeight = 1.5f;
+        public float AimOffset = 0.22f;
         public float Sensitivity = 0.12f;
-        public float MinPitch = -30f;
+        /// <summary>Keep the orbit from dropping under the ground: that was clipping the head.</summary>
+        public float MinPitch = -12f;
         public float MaxPitch = 70f;
+        public float MinDistance = 2.2f;
 
         public float Yaw => _yaw;
 
@@ -31,10 +35,10 @@ namespace AI003.Player
             {
                 return;
             }
-            Quaternion rotation = Quaternion.Euler(_pitch, _yaw, 0f);
             Vector3 pivot = Target.position + Vector3.up * PivotHeight;
+            Quaternion rotation = Quaternion.Euler(_pitch, _yaw, 0f);
             transform.position = pivot - rotation * Vector3.forward * Distance;
-            transform.rotation = rotation;
+            transform.rotation = Quaternion.LookRotation((pivot + Vector3.up * AimOffset) - transform.position);
         }
 
         private void LateUpdate()
@@ -72,15 +76,34 @@ namespace AI003.Player
             Vector3 pivot = Target.position + Vector3.up * PivotHeight;
             Vector3 desired = pivot - rotation * Vector3.forward * Distance;
 
-            // Pull the camera in when terrain would occlude the player.
+            // Pull the camera in when terrain would occlude the player, but never
+            // closer than MinDistance — that is what used to cut the head in half.
             if (Physics.Linecast(pivot, desired, out RaycastHit hit, ~0, QueryTriggerInteraction.Ignore))
             {
-                desired = hit.point + hit.normal * 0.35f;
+                Vector3 pulled = hit.point + hit.normal * 0.35f;
+                if ((pulled - pivot).magnitude < MinDistance)
+                {
+                    pulled = pivot + (pulled - pivot).normalized * MinDistance;
+                }
+                desired = pulled;
+            }
+
+            // Never let the orbit sink into a slope: that is what turned "look up"
+            // into a wall of dark sand instead of sky.
+            if (Physics.Raycast(desired + Vector3.up * 20f, Vector3.down, out RaycastHit ground,
+                    40f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                float floor = ground.point.y + 0.6f;
+                if (desired.y < floor)
+                {
+                    desired.y = floor;
+                }
             }
 
             float blend = 1f - Mathf.Exp(-14f * Time.deltaTime);
             transform.position = Vector3.Lerp(transform.position, desired, blend);
-            transform.rotation = rotation;
+            Vector3 aim = pivot + Vector3.up * AimOffset;
+            transform.rotation = Quaternion.LookRotation(aim - transform.position);
         }
 
         private void LockCursor()

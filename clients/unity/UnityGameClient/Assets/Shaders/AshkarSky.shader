@@ -95,7 +95,9 @@ Shader "AI003/AshkarSky"
                 float up = saturate(d.y);
 
                 // Dust sky: horizon glow fading into a cooler, greyer zenith.
-                float3 sky = lerp(_Horizon.rgb, _Zenith.rgb, pow(up, 0.30));
+                // 0.55 keeps the warm band near the horizon without snapping to a
+                // dark zenith as soon as the camera tilts up.
+                float3 sky = lerp(_Horizon.rgb, _Zenith.rgb, pow(up, 0.55));
                 float haze = exp(-abs(d.y) * 16.0) * _Haze;
                 sky = lerp(sky, _Horizon.rgb * 1.08, saturate(haze));
 
@@ -116,9 +118,11 @@ Shader "AI003/AshkarSky"
                 float knit = exp(-abs(d.y) * 90.0) * _HorizonBand;
                 sky = lerp(sky, _FogColor.rgb, saturate(knit));
 
-                // Below the horizon: ground haze, not a hard cut.
-                float g = saturate(-d.y * 2.5);
-                sky = lerp(sky, _Ground.rgb, g * g);
+                // Below the horizon the sky must read as the same haze the fog gives
+                // distant terrain — otherwise it shows up as a flat brown slab where
+                // the 2 km map ends.
+                float g = smoothstep(0.12, -0.02, d.y);
+                sky = lerp(sky, _Ground.rgb, g);
 
                 float s1 = saturate(dot(d, normalize(_SunDir.xyz)));
                 float s2 = saturate(dot(d, normalize(_Sun2Dir.xyz)));

@@ -11,9 +11,10 @@ namespace AI003.World
     /// </summary>
     public static class AshkarLook
     {
-        public static readonly Color Zenith = Hex("31343A");
+        public static readonly Color Zenith = Hex("5E6B78");
         public static readonly Color Horizon = Hex("E4BE93");
-        public static readonly Color Ground = Hex("6B4F36");
+        /// <summary>Below-horizon sky == fog, so the map edge never shows as a slab.</summary>
+        public static readonly Color Ground = Hex("C9BFAE");
         public static readonly Color SunColor = Hex("FFEFD6");
         public static readonly Color Sun2Color = Hex("E08A5C");
 

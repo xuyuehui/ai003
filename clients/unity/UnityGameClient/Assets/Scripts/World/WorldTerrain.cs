@@ -143,8 +143,10 @@ namespace AI003.World
             Water.transform.SetParent(transform, false);
             Water.transform.localPosition = new Vector3(0f, data.SeaLevel, 0f);
 
-            // Extend well past the map so the horizon is water, not a plane edge.
-            float extent = data.SizeMeters * 4f;
+            // Extend far past the map: at 46 m eye height the visible horizon is
+            // tens of kilometres away, and a 4x plane ended inside the frame as a
+            // hard band.
+            float extent = data.SizeMeters * 40f;
             var mesh = new Mesh { name = "OceanPlane" };
             mesh.vertices = new[]
             {

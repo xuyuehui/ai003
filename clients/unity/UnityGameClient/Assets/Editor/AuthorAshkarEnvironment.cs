@@ -20,9 +20,9 @@ namespace AI003.EditorTools
         private const string RootName = "[AI003] Environment";
         private const string Dir = "Assets/Generated/Environment";
 
-        private static readonly Color Zenith = Hex("31343A");
+        private static readonly Color Zenith = Hex("5E6B78");
         private static readonly Color Horizon = Hex("E4BE93");
-        private static readonly Color Ground = Hex("6B4F36");
+        private static readonly Color Ground = Hex("C9BFAE");
         private static readonly Color SunColor = Hex("FFEFD6");
         private static readonly Color Sun2Color = Hex("E08A5C");
 
