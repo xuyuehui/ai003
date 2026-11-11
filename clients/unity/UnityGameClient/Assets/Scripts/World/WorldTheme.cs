@@ -123,6 +123,13 @@ namespace AI003.World
             Vector3 n = data.NormalAt(x, z);
             c *= Mathf.Lerp(1f, 0.78f, Mathf.Clamp01((1f - n.y) * 2.2f));
 
+            // Curvature AO: concave hollows darken, convex crests catch a little light.
+            // This is what makes a 4 m mesh read as dunes instead of a smooth blob.
+            float lap = (data.HeightAt(x + 1, z) + data.HeightAt(x - 1, z)
+                         + data.HeightAt(x, z + 1) + data.HeightAt(x, z - 1)) * 0.25f - h;
+            float ao = 1f - Mathf.Clamp(lap * 0.34f, -0.16f, 0.34f);
+            c *= ao;
+
             c.a = 1f;
             return c;
         }

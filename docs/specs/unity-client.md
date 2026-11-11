@@ -74,9 +74,19 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 
 ### 4.4 离屏剧照
 
-- `AI003.EditorTools.AshkarStill.Run`：批处理渲染 `artifacts/ashkar/s2_*.png`（1920×804）。
-- 机位自动搜索：内陆、高处、前方 200–600 m 是下坡、420 m 与 900 m 处仍是陆地（避免看向盐海）。
-- 光照/后期参数在 `AshkarStill.cs` 顶部与 `BuildProfile()`，改完重跑即可。
+- `AI003.EditorTools.AshkarStill.Run`：批处理一次渲染三张 `artifacts/ashkar/{s1_dawn,s2_dusk,s4_night}.png`（1920×804）。
+- 机位自动搜索：内陆、高处、前方 200–600 m 是下坡、420 m 与 900 m 处仍是陆地（避免看向盐海）；
+  夜景单独找"靠近盐海、地形平缓"的点。
+- 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
+
+### 4.5 程序化地标与载具
+
+- `Assets/Scripts/World/AshkarProps.cs`：井塔（倒锥 + 平台 + 深窗）、第一井（下沉广场 + 钟架）、
+  帆撬（三滑板 + 桅杆 + 帆 + 货斗）、人形剪影（锥体 + 头）、冷火晶簇。全部代码生成，无外部模型。
+- `Assets/Scripts/World/SailSled.cs`：三滑板物理 —— 各向异性摩擦（侧向 3.2、前向 0.35 阻力）、
+  风推力、随速度增长的转向扭矩、贴合坡面；滑板用 0.02 摩擦的 `PhysicsMaterial`，避免碰撞体自身"抓沙"。
+- `Rigidbody.sleepThreshold = 0`：风驱动的刚体不能睡着，否则 `AddForce` 被静默忽略。
+- PlayMode：`SailSledTests` 在 (4000,0,4000) 的独立平面上验证加速 > 4 m、侧滑 < 40%、转向 > 12°。
 
 ## 5. 角色与物理
 

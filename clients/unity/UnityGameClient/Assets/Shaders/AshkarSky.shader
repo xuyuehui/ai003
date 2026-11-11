@@ -13,6 +13,7 @@ Shader "AI003/AshkarSky"
         _Sun2Size ("Second Sun Disk", Float) = 0.99980
         _Haze ("Horizon Haze", Float) = 0.55
         _DustBand ("Dust Band", Float) = 0.35
+        _Stars ("Stars", Float) = 0
     }
 
     SubShader
@@ -57,6 +58,7 @@ Shader "AI003/AshkarSky"
                 float _Sun2Size;
                 float _Haze;
                 float _DustBand;
+                float _Stars;
             CBUFFER_END
 
             Varyings vert(Attributes input)
@@ -97,6 +99,15 @@ Shader "AI003/AshkarSky"
                 float3 col = sky
                     + _SunColor.rgb * (disk1 * 8.0 + glow1)
                     + _Sun2Color.rgb * (disk2 * 5.0 + glow2);
+
+                // Sparse stars, only above the horizon and only when asked for.
+                if (_Stars > 0.001)
+                {
+                    float3 cell = floor(d * 260.0);
+                    float hsh = frac(sin(dot(cell, float3(12.9898, 78.233, 37.719))) * 43758.5453);
+                    float twinkle = smoothstep(0.9976, 1.0, hsh);
+                    col += twinkle * _Stars * saturate(d.y * 1.6) * float3(0.72, 0.82, 1.0);
+                }
 
                 return float4(col, 1.0);
             }

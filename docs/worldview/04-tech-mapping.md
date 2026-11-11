@@ -147,3 +147,15 @@ S1/S2/S4 可以**离线单机**完成（不依赖服务器）；S3/S5/S6 需要�
 4. `smoke-unity`、`smoke-all` 的 Unity 项 PASS；
 5. **UE 端一行未改**，仍能连接、仍能跑旧世界；
 6. 文档同步（见 §7）。
+
+## 9. 进展（Unity 侧）
+
+| 里程碑 | 状态 | 证据 |
+| --- | --- | --- |
+| M1 主题与光 | ✅ 第一版 | `WorldTheme` + `AshkarSky` + `AshkarTerrain` + 曲率 AO；三张引擎帧 |
+| M2 地标与道具 | ✅ 第一版 | `AshkarProps`：井塔 / 第一井 / 帆撬 / 人形 / 冷火晶簇 |
+| M3 物理 | ✅ 帆撬 | `SailSled` + `SailSledTests`（PlayMode 3/3 通过） |
+| M4 网络 | ⬜ 未开始 | 需要 `world.tide` / `world.elder` / `world.node` 报文 |
+
+已知未收口：S1 的机位与地标遮挡、分层高度雾、沙丘近景细分、冷火过曝。
+这些是下一轮的美术/技术细项，不影响已通过的验收项（世界/物理/截图/测试）。
