@@ -46,7 +46,8 @@ namespace AI003.EditorTools
             var robe = AshkarProps.Material("Robes", new Color(0.09f, 0.07f, 0.06f), 0.1f);
             var sail = AshkarProps.Material("SailCloth", new Color(0.62f, 0.48f, 0.34f), 0.15f);
 
-            Vector3 plaza = Ground(data, spawn + forward * 16f);
+            // Far enough ahead that the player does not spawn inside the ring wall.
+            Vector3 plaza = Ground(data, spawn + forward * 52f);
             AshkarProps.WellOne(plaza, 20f, brick, wood, bell).transform.SetParent(root.transform, true);
 
             Vector3 spire = Ground(data, spawn + forward * 95f + right * 55f);

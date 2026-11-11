@@ -76,7 +76,7 @@ namespace AI003.World
             {
                 // Baked scene: terrain, props, lights and post already live in the
                 // scene file. We only need the data for physics queries and the
-                // player to walk around. Do NOT run ConfigureRendering here: it
+                // player to walk around. Do NOT touch the lighting here: it
                 // would disable the baked lights.
                 Terrain = UnityEngine.Object.FindAnyObjectByType<WorldTerrain>();
                 if (Terrain != null && HasBakedMeshes(Terrain))
@@ -94,7 +94,14 @@ namespace AI003.World
                 _buildTerrain = true;
             }
 
-            ConfigureRendering();
+            // An authored scene carries its own suns, sky, fog and post volume
+            // (menu AI003/Author Ashkar Environment); never override those.
+            bool authoredEnvironment = GameObject.Find("[AI003] Environment") != null;
+            DisableTemplateObjects(disableLights: !authoredEnvironment);
+            if (!authoredEnvironment)
+            {
+                CreateSunAndAtmosphere();
+            }
 
             // The Ashkar palette is a client-side skin: it only changes the vertex
             // colours this client builds, the world files stay untouched.
@@ -116,22 +123,29 @@ namespace AI003.World
 
             if (_ashkarLook)
             {
-                AshkarLook.Apply(this);
-                // Set dressing is authored into the scene (menu AI003/Author Ashkar
-                // Scene) and never spawned here: Play must not rebuild the composition.
+                // Materials always follow the theme; the environment (suns, sky,
+                // fog, post) only when the scene does not already own it.
+                AshkarLook.ApplyMaterials(this);
+                if (!authoredEnvironment)
+                {
+                    AshkarLook.ApplyScene(this);
+                }
             }
 
             Debug.Log($"[AI003] world ready: {Data.SizeMeters:0} m, {Data.Resolution}x{Data.Resolution} vertices, " +
                       $"{Terrain.ChunkCount} chunks, spawn ({Data.Spawn.x:0}, {Data.Spawn.y:0}, {Data.Spawn.z:0})");
         }
 
-        private void ConfigureRendering()
+        /// <summary>Kills the template scene's camera (and optionally its lights).</summary>
+        private void DisableTemplateObjects(bool disableLights)
         {
-            // Start from a clean slate: the template scene ships its own camera
-            // and directional light, both would fight with ours.
             foreach (Camera camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsInactive.Include))
             {
                 camera.gameObject.SetActive(false);
+            }
+            if (!disableLights)
+            {
+                return;
             }
             foreach (Light light in UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Include))
             {
@@ -140,7 +154,10 @@ namespace AI003.World
                     light.gameObject.SetActive(false);
                 }
             }
+        }
 
+        private void CreateSunAndAtmosphere()
+        {
             var sunObject = new GameObject("[AI003] Sun");
             sunObject.transform.SetParent(transform, false);
             sunObject.transform.rotation = Quaternion.Euler(48f, -32f, 0f);

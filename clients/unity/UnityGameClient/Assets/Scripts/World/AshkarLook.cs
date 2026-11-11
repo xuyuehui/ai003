@@ -17,6 +17,7 @@ namespace AI003.World
         public static readonly Color SunColor = Hex("FFEFD6");
         public static readonly Color Sun2Color = Hex("E08A5C");
 
+        /// <summary>Everything: used when the scene has no authored environment.</summary>
         public static void Apply(WorldBootstrap boot)
         {
             if (boot == null || boot.Data == null || boot.Terrain == null)
@@ -24,11 +25,27 @@ namespace AI003.World
                 return;
             }
 
+            ApplyScene(boot);
+            ApplyMaterials(boot);
+        }
+
+        /// <summary>Camera, suns, sky, fog and post — skipped when the scene owns them.</summary>
+        public static void ApplyScene(WorldBootstrap boot)
+        {
             ConfigureCamera(boot);
             ConfigureLights(boot);
             ConfigureSky();
             ConfigureFog();
             ConfigureVolume();
+        }
+
+        /// <summary>Terrain and water materials — always applied, even for authored scenes.</summary>
+        public static void ApplyMaterials(WorldBootstrap boot)
+        {
+            if (boot == null || boot.Data == null || boot.Terrain == null)
+            {
+                return;
+            }
             ConfigureMaterials(boot);
         }
 
