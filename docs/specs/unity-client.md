@@ -79,6 +79,13 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   夜景单独找"靠近盐海、地形平缓"的点。
 - 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
 
+### 4.4.-1 主相机也在场景里
+
+- 菜单 `AI003/Author Main Camera` 把 `Main Camera`（`Camera` + `OrbitCamera`，`MainCamera` 标签）
+  写进场景，位置/朝向按出生点算好；它在编辑模式下的旋转就是开局视角。
+- Play 时 `WorldBootstrap` 直接**复用**这台相机（把 `OrbitCamera.Target` 指向玩家），
+  只有场景里没有相机时才新建。
+
 ### 4.4.0 地形也是静态的（烘焙进场景）
 
 - 菜单 `AI003/Bake Terrain (static)` 把 64 块地形网格（1025²，2 m/顶点）写成

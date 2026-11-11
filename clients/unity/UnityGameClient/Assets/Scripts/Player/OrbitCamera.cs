@@ -23,6 +23,15 @@ namespace AI003.Player
         private float _pitch = 16f;
         private bool _cursorInitialised;
 
+        private void Awake()
+        {
+            // Adopt the authored rotation so a camera placed in the scene keeps the
+            // framing it was saved with instead of snapping to the code defaults.
+            Vector3 euler = transform.eulerAngles;
+            _yaw = euler.y;
+            _pitch = Mathf.Clamp(Mathf.DeltaAngle(0f, euler.x), MinPitch, MaxPitch);
+        }
+
         private void Start()
         {
             LockCursor();

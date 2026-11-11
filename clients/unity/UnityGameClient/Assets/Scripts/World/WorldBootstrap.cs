@@ -29,6 +29,8 @@ namespace AI003.World
         [SerializeField] private bool _buildTerrain = true;
 
         private GUIStyle _hudStyle;
+        private Camera _authoredCamera;
+        private OrbitCamera _authoredRig;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoInstall()
@@ -71,6 +73,8 @@ namespace AI003.World
                 Debug.LogError($"[AI003] cannot load world: {e.Message}");
                 return;
             }
+
+            FindAuthoredCamera();
 
             if (!_buildTerrain)
             {
@@ -136,11 +140,22 @@ namespace AI003.World
                       $"{Terrain.ChunkCount} chunks, spawn ({Data.Spawn.x:0}, {Data.Spawn.y:0}, {Data.Spawn.z:0})");
         }
 
+        /// <summary>Picks up the camera that was authored in the scene, if any.</summary>
+        private void FindAuthoredCamera()
+        {
+            _authoredRig = UnityEngine.Object.FindAnyObjectByType<OrbitCamera>(FindObjectsInactive.Include);
+            _authoredCamera = _authoredRig != null ? _authoredRig.GetComponent<Camera>() : null;
+        }
+
         /// <summary>Kills the template scene's camera (and optionally its lights).</summary>
         private void DisableTemplateObjects(bool disableLights)
         {
             foreach (Camera camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsInactive.Include))
             {
+                if (camera == _authoredCamera)
+                {
+                    continue;
+                }
                 camera.gameObject.SetActive(false);
             }
             if (!disableLights)
@@ -218,16 +233,31 @@ namespace AI003.World
 
             AttachCharacter(playerObject);
 
-            var cameraObject = new GameObject("Main Camera");
-            cameraObject.tag = "MainCamera";
-            PlayerCamera = cameraObject.AddComponent<Camera>();
-            PlayerCamera.fieldOfView = 62f;
-            PlayerCamera.nearClipPlane = 0.1f;
-            PlayerCamera.farClipPlane = 4000f;
+            // Reuse the camera authored in the scene; only build one when absent
+            // (menu AI003/Author Main Camera creates it).
+            GameObject cameraObject = _authoredCamera != null
+                ? _authoredCamera.gameObject
+                : new GameObject("Main Camera");
+
+            if (_authoredCamera != null)
+            {
+                PlayerCamera = _authoredCamera;
+                CameraRig = _authoredRig != null ? _authoredRig : cameraObject.AddComponent<OrbitCamera>();
+            }
+            else
+            {
+                cameraObject.tag = "MainCamera";
+                PlayerCamera = cameraObject.AddComponent<Camera>();
+                PlayerCamera.fieldOfView = 62f;
+                PlayerCamera.nearClipPlane = 0.1f;
+                PlayerCamera.farClipPlane = 4000f;
+                cameraObject.transform.rotation = Quaternion.Euler(16f, 160f, 0f);
+                CameraRig = cameraObject.AddComponent<OrbitCamera>();
+            }
+
             PlayerCamera.clearFlags = RenderSettings.skybox != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
             PlayerCamera.backgroundColor = RenderSettings.fogColor;
 
-            CameraRig = cameraObject.AddComponent<OrbitCamera>();
             CameraRig.Target = playerObject.transform;
 
             Player.CameraTransform = cameraObject.transform;
