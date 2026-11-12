@@ -221,4 +221,4 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 1. 编辑器 0 编译错误、0 着色器错误；
 2. PlayMode 测试通过；
 3. `smoke-all` 的 `unity` / `unity-pm` 项 PASS；
-4. 角色参数与 UE 端保持一致（见 [ue5-client.md](ue5-client.md)）。
+4. 场景内容全部 Author 在 `OpenWorld.unity` 里，Play 不生成世界（见 §4.4）。

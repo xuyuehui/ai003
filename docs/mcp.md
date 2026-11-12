@@ -1,5 +1,7 @@
 # 引擎 MCP 配置（Unity + Unreal）
 
+> **范围（2026-11-12 起）**：只保留 Unity 的 MCP（`unity`）。Unreal 的 EngineWire 章节是历史记录，不再维护。
+
 两个编辑器各接一个 MCP 服务，DSH 里分别叫 `unreal-engine` 和 `unity`。
 两边都只监听 `127.0.0.1`，用于让 AI 直接操作编辑器（摆场景、建资产、跑测试、截图）。
 

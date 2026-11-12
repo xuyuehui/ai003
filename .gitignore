@@ -26,3 +26,7 @@ clients/unity/UnityGameClient/Assets/SceneDependencyCache.meta
 # Unity generated bake meshes
 clients/unity/UnityGameClient/Assets/World/Baked/Meshes/
 clients/unity/UnityGameClient/Assets/World/Baked/Tiles/Meshes/
+
+# Local research cache (not part of the project)
+.dsh-market-research/
+

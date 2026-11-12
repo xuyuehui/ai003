@@ -6,13 +6,20 @@
 | --- | --- | --- |
 | Go 服务器 | [go-server.md](go-server.md) | Go 1.26.3 · `module ai003/server` |
 | Unity 客户端 | [unity-client.md](unity-client.md) | Unity 6000.6.6f1 · URP 17.6 |
-| Unity 开放大世界 | [unity-open-world.md](unity-open-world.md) | 8 km · 128 m 瓦片 · 四叉树 clipmap |
-| UE5 客户端 | [ue5-client.md](ue5-client.md) | Unreal Engine 5.8 · C++20 |
 | 共享协议 | [../../protocol/README.md](../../protocol/README.md) | WebSocket JSON v1 |
-| MCP | [../mcp.md](../mcp.md) | EngineWire 0.6.0 / MCP for Unity 10.3.0 |
+| MCP | [../mcp.md](../mcp.md) | MCP for Unity 10.3.0 |
 
-开放大世界的逐步骤实施手册见 [unity-open-world-steps.md](unity-open-world-steps.md)；
-地形内容的制作流水线（含业界参考）见 [terrain-production-pipeline.md](terrain-production-pipeline.md)。
+**当前范围**：只做 Unity 客户端 + Go 网关。两端**不共享世界数据**，只共享服务器协议与
+服务器算出来的世界事件；场景内容全部在编辑器里 Author 好，Play 不生成世界。
+
+### 归档（历史方案，不实施）
+
+以下文档保留作参考，不代表当前方向：
+
+| 文档 | 为什么归档 |
+| --- | --- |
+| [unity-open-world.md](../archive/unity-open-world.md) · [unity-open-world-steps.md](../archive/unity-open-world-steps.md) · [terrain-production-pipeline.md](../archive/terrain-production-pipeline.md) | 开放大世界方案（8 km / 4096 瓦片 / 流式），已明确不做 |
+| [ue5-client.md](../archive/ue5-client.md) | UE5 客户端，已不做 |
 
 ## 仓库级约定
 
@@ -21,8 +28,8 @@
 ```
 server/                 Go 模块（cmd / internal）
 clients/unity/…         Unity 工程
-clients/ue5/…           UE5 工程
-world/                  世界数据（生成物，提交）
+clients/ue5/…           UE5 工程（历史，不维护）
+world/                  世界数据（生成物，提交；Unity 自用）
 protocol/               三端共享协议
 scripts/                构建、生成、冒烟、MCP 脚本
 docs/                   环境、MCP、规格
@@ -34,8 +41,7 @@ artifacts/              本地输出（不提交）
 | 位置 | 由谁生成 | 复现命令 |
 | --- | --- | --- |
 | `world/`、Unity `Assets/StreamingAssets/world/`、UE `WorldData/` | `server/cmd/worldgen` | `scripts/generate-world.cmd` |
-| Unity `Assets/Scenes/OpenWorld.unity` | `AI003.EditorTools.SetupWorldScene` | Unity 批处理 `-executeMethod` |
-| UE `/Game/AI003/M_*` 材质 | `Scripts/setup_assets.py` | `scripts/setup-ue-assets.cmd` |
+| Unity `Assets/Scenes/OpenWorld.unity` 的地形/摆件/灯光 | 菜单 `AI003/Bake Terrain`、`AI003/Author *` | 见 [unity-client.md](unity-client.md) §4.4 |
 | 两端截图 | 渲染/截图脚本 | `scripts/smoke-*.cmd`、`RenderWorldPreview` |
 
 ### 端口与环境变量
@@ -66,7 +72,7 @@ artifacts/              本地输出（不提交）
 
 任何三端都适用的最低要求：
 
-1. `.\scripts\smoke-all.cmd` 的 6 项全 PASS；
+1. `.\scripts\smoke-all.cmd` 全 PASS（UE 已归档，默认不跑；Unity 的 PlayMode 也在其中）；
 2. 新增/修改的行为有对应测试或冒烟入口；
 3. 文档（本目录、`README.md` 或 `protocol/`）同步更新；
 4. 没有把生成物或构建产物误提交。

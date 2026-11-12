@@ -1,6 +1,7 @@
 #!/usr/bin/env pwsh
 # One-command environment verification:
-#   Go unit tests -> gateway up -> Go ping client -> Unity smoke -> UE5 smoke.
+#   Go unit tests -> gateway up -> Go ping client -> Unity smoke.
+# UE5 is out of scope: its steps are opt-in (-WithUE / -WithUEWorld).
 [CmdletBinding()]
 param(
     [string]$Url = 'ws://127.0.0.1:8080/ws',
@@ -8,8 +9,9 @@ param(
     [string]$Engine = 'C:\Program Files\Epic Games\UE_5.8',
     [switch]$SkipUnity,
     [switch]$SkipPlayMode,
-    [switch]$SkipUE,
-    [switch]$SkipUEWorld,
+    # UE5 is no longer part of the project; these stay for archived runs.
+    [switch]$WithUE,
+    [switch]$WithUEWorld,
     [switch]$SkipGoTests,
     [switch]$SkipDemo,
     [switch]$WithCompare,
@@ -95,11 +97,11 @@ try {
         $results['unity-pm'] = 'SKIP'
     }
 
-    if (-not $SkipUE) {
+    if ($WithUE) {
         & (Join-Path $scripts 'smoke-ue5.ps1') -Engine $Engine -Url $Url
         $results['ue5'] = 'PASS'
 
-        if (-not $SkipUEWorld) {
+        if ($WithUEWorld) {
             & (Join-Path $scripts 'smoke-ue5-world.ps1') -Engine $Engine
             $results['ue5-world'] = 'PASS'
         }
