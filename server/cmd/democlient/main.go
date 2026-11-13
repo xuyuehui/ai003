@@ -129,7 +129,8 @@ func sign(v int64) int {
 }
 
 func main() {
-	url := flag.String("url", "ws://127.0.0.1:8080/ws", "gateway websocket url")
+	url := flag.String("url", envOr("AI003_WS_URL", "ws://127.0.0.1:8080/ws"),
+		"gateway websocket url (priority: -url flag > AI003_WS_URL > ws://127.0.0.1:8080/ws)")
 	name := flag.String("name", "demo", "player name")
 	room := flag.String("room", "", "explicit room id (empty = auto match)")
 	clientID := flag.String("clientId", "", "persistent client id (empty = server default)")
@@ -329,4 +330,13 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// envOr mirrors the helper in cmd/server and cmd/pingclient so all three
+// binaries agree on how a gateway address is overridden via the environment.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

@@ -3,8 +3,28 @@ package worldgen
 import (
 	"bytes"
 	"math"
+	"sync"
 	"testing"
 )
+
+// defaultWorld is generated at most once per test binary: the default world is
+// 2049x2049 and two independent Generate calls dominate the package test time.
+var (
+	defaultWorldOnce sync.Once
+	defaultWorldVal  *World
+	defaultWorldErr  error
+)
+
+func defaultWorld(t *testing.T) *World {
+	t.Helper()
+	defaultWorldOnce.Do(func() {
+		defaultWorldVal, defaultWorldErr = Generate(DefaultSeed, DefaultSize, DefaultResolution)
+	})
+	if defaultWorldErr != nil {
+		t.Fatal(defaultWorldErr)
+	}
+	return defaultWorldVal
+}
 
 func TestGenerateIsDeterministic(t *testing.T) {
 	a, err := Generate(42, 512, 129)
@@ -42,10 +62,7 @@ func TestDifferentSeedsDiffer(t *testing.T) {
 }
 
 func TestWorldContainsEveryBiome(t *testing.T) {
-	w, err := Generate(DefaultSeed, DefaultSize, DefaultResolution)
-	if err != nil {
-		t.Fatal(err)
-	}
+	w := defaultWorld(t)
 
 	counts := map[uint8]int{}
 	for _, b := range w.Biomes {
@@ -68,10 +85,7 @@ func TestWorldContainsEveryBiome(t *testing.T) {
 }
 
 func TestSpawnIsDryAndFlat(t *testing.T) {
-	w, err := Generate(DefaultSeed, DefaultSize, DefaultResolution)
-	if err != nil {
-		t.Fatal(err)
-	}
+	w := defaultWorld(t)
 	spawn := w.Metadata.Spawn
 	if spawn.Y <= w.Metadata.SeaLevel+1 {
 		t.Fatalf("spawn is not above sea level: %+v", spawn)

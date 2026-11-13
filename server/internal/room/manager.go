@@ -249,7 +249,11 @@ func (m *Manager) pickRoomLocked() string {
 	best := ""
 	bestPlayers := m.capacity
 	for _, id := range m.order {
-		players := m.rooms[id].Count()
+		r, ok := m.rooms[id]
+		if !ok {
+			continue // arena rooms live in m.arenas, not the frame pool
+		}
+		players := r.Count()
 		if players < bestPlayers {
 			best = id
 			bestPlayers = players

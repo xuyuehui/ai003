@@ -194,31 +194,50 @@ namespace AI003.World
             grain.intensity.value = 0.12f;
         }
 
+        /// <summary>
+        /// Single source of truth for the Ashkar terrain look. Both the runtime
+        /// bootstrap and the BakeTerrain authoring tool call this, so re-baking can
+        /// never drift the baked material away from the runtime one.
+        /// Pass a texture asset when writing to a material asset (generated textures
+        /// are not serializable).
+        /// </summary>
+        public static void ConfigureTerrainMaterial(Material material, Texture detailNormal = null)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            material.SetTexture("_DetailNormal", detailNormal != null ? detailNormal : AshkarTextures.DetailNormal());
+            material.SetFloat("_DetailScale1", 0.085f);
+            material.SetFloat("_DetailScale2", 0.34f);
+            material.SetFloat("_DetailStrength", 0.55f);
+            material.SetFloat("_RippleStrength", 0.11f);
+            material.SetFloat("_Speckle", 0.22f);
+            material.SetFloat("_Smoothness", 0.22f);
+            material.SetColor("_HeightFogColor", Color.Lerp(Horizon, Hex("D8D2C6"), 0.55f).linear);
+            material.SetFloat("_HeightFogStrength", 0.22f);
+            material.SetFloat("_HeightFogDistance", 3000f);
+        }
+
+        /// <summary>White salt-pan sea material — runtime fallback for Assets/Settings/AshkarOcean.mat.</summary>
+        public static Material CreateSaltMaterial()
+        {
+            var salt = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "AshkarOcean" };
+            salt.SetColor("_BaseColor", new Color(0.95f, 0.93f, 0.88f));
+            salt.SetFloat("_Smoothness", 0.55f);
+            salt.SetFloat("_Metallic", 0f);
+            return salt;
+        }
+
         private static void ConfigureMaterials(WorldBootstrap boot)
         {
-            var material = boot.Terrain.TerrainMaterial;
-            if (material != null)
-            {
-                material.SetTexture("_DetailNormal", AshkarTextures.DetailNormal());
-                material.SetFloat("_DetailScale1", 0.085f);
-                material.SetFloat("_DetailScale2", 0.34f);
-                material.SetFloat("_DetailStrength", 0.55f);
-                material.SetFloat("_RippleStrength", 0.11f);
-                material.SetFloat("_Speckle", 0.22f);
-                material.SetFloat("_Smoothness", 0.22f);
-                material.SetColor("_HeightFogColor", Color.Lerp(Horizon, Hex("D8D2C6"), 0.55f).linear);
-                material.SetFloat("_HeightFogStrength", 0.22f);
-                material.SetFloat("_HeightFogDistance", 3000f);
-            }
+            ConfigureTerrainMaterial(boot.Terrain.TerrainMaterial);
 
             // The sea becomes the white salt pan.
             if (boot.Terrain.Water != null)
             {
-                var salt = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "SaltFlat" };
-                salt.SetColor("_BaseColor", new Color(0.95f, 0.93f, 0.88f));
-                salt.SetFloat("_Smoothness", 0.55f);
-                salt.SetFloat("_Metallic", 0f);
-                boot.Terrain.Water.GetComponent<MeshRenderer>().sharedMaterial = salt;
+                boot.Terrain.Water.GetComponent<MeshRenderer>().sharedMaterial = CreateSaltMaterial();
             }
         }
 

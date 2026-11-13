@@ -1,12 +1,28 @@
 param(
     [int]$Seconds = 8,
-    [string]$BaseUrl = "http://127.0.0.1:8080",
+    [string]$BaseUrl = "",
+    [string]$Url = "",
     [string]$Room = "",
     [switch]$UpdateBaseline,
     [string]$BaselinePath = ""
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- gateway address ---------------------------------------------------------
+# $Url (ws://host:port/ws) is what the headless clients dial; $BaseUrl is only
+# used for the /healthz and /demo probes. The clients used to be hard-wired to
+# ws://127.0.0.1:8080/ws, so passing -BaseUrl alone health-checked one gateway
+# while the traffic went to another (usually the user's long-running one).
+if ([string]::IsNullOrWhiteSpace($BaseUrl)) { $BaseUrl = 'http://127.0.0.1:8080' }
+
+if ([string]::IsNullOrWhiteSpace($Url)) {
+    $Url = ($BaseUrl -replace '^http', 'ws').TrimEnd('/')
+}
+elseif (-not $PSBoundParameters.ContainsKey('BaseUrl')) {
+    $BaseUrl = (($Url -replace '^ws', 'http') -replace '/ws$', '').TrimEnd('/')
+}
+if ($Url -notmatch '/ws$') { $Url = "$Url/ws" }
 
 try {
     Invoke-RestMethod "$BaseUrl/healthz" -TimeoutSec 5 | Out-Null
@@ -38,11 +54,11 @@ $betaErr = Join-Path $work 'beta.err'
 Write-Host "==> technical demo: two headless clients in ${Room} (${Seconds}s)"
 $alpha = Start-Process -FilePath 'go' -PassThru -NoNewWindow -WorkingDirectory $serverDir `
     -RedirectStandardOutput $alphaOut -RedirectStandardError $alphaErr `
-    -ArgumentList @('run', './cmd/democlient', '-seconds', "$Seconds", '-name', 'alpha',
+    -ArgumentList @('run', './cmd/democlient', '-url', $Url, '-seconds', "$Seconds", '-name', 'alpha',
         '-clientId', "$Room-alpha", '-room', $Room, '-spar')
 $beta = Start-Process -FilePath 'go' -PassThru -NoNewWindow -WorkingDirectory $serverDir `
     -RedirectStandardOutput $betaOut -RedirectStandardError $betaErr `
-    -ArgumentList @('run', './cmd/democlient', '-seconds', "$Seconds", '-name', 'beta',
+    -ArgumentList @('run', './cmd/democlient', '-url', $Url, '-seconds', "$Seconds", '-name', 'beta',
         '-clientId', "$Room-beta", '-room', $Room, '-still')
 
 if (-not $alpha.WaitForExit(120000)) { $alpha.Kill(); throw 'alpha timed out' }

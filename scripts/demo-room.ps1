@@ -5,7 +5,11 @@
     [switch]$KeepRunning,
     [switch]$NoPublish,
     [switch]$NoAssert,
-    [ValidateSet('frame', 'arena')][string]$Sync = 'frame'
+    [ValidateSet('frame', 'arena')][string]$Sync = 'frame',
+    [string]$Url = '',
+    [int]$Port = 8080,
+    [switch]$WithUE,
+    [switch]$SkipUE
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,7 +32,41 @@ New-Item -ItemType Directory -Force -Path $demoDir, $logs | Out-Null
 $unityShot = Join-Path $demoDir 'room-unity.png'
 $ueShot = Join-Path $demoDir 'room-ue5.png'
 $compare = Join-Path $demoDir 'room-compare.png'
-$baseUrl = 'http://127.0.0.1:8080'
+
+. (Join-Path $PSScriptRoot '_ports.ps1')
+if ([string]::IsNullOrWhiteSpace($Url)) { $Url = ConvertTo-WsUrl "http://127.0.0.1:$Port" }
+$baseUrl = ConvertTo-BaseUrl $Url
+# The Unity player reads AI003_WS_URL (ConnectionBootstrap.cs:113); export it so
+# the client and the /healthz,/demo probes talk to the same gateway.
+$env:AI003_WS_URL = $Url
+
+# --- participation mode ------------------------------------------------------
+# UE5 is out of scope since 73fe372, so the DEFAULT is single-end (Unity only):
+# that is normal coverage, not a degraded run, and it exits 0. Dual-end is opt-in
+# with -WithUE. Only a requested-but-unavailable UE side counts as DEGRADED
+# (banner + exit 2). -SkipUE is kept as the explicit opposite of -WithUE.
+$ueEditor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
+$useUE = ($WithUE -and -not $SkipUE)
+$singleEnd = -not $useUE
+$degraded = $false
+$requiredPlayers = 2
+
+if ($singleEnd) {
+    $why = if ($SkipUE) { '-SkipUE was passed' } else { 'dual-end is opt-in (-WithUE)' }
+    $requiredPlayers = 1
+    Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
+    Write-Host "SINGLE-END: 未经双端验证 - Unity client only ($why)" -ForegroundColor Cyan
+    Write-Host 'Assertions are Unity-only: fighters>=1 replaces fighters=2.' -ForegroundColor Cyan
+    Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
+}
+elseif (-not (Test-Path $ueEditor)) {
+    $degraded = $true
+    $requiredPlayers = 1
+    Write-Host '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' -ForegroundColor Yellow
+    Write-Host "DEGRADED: 未经双端验证 - -WithUE requested but UE editor not found: $ueEditor" -ForegroundColor Yellow
+    Write-Host 'Falling back to the Unity client only; fighters>=1 replaces fighters=2.' -ForegroundColor Yellow
+    Write-Host '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' -ForegroundColor Yellow
+}
 
 function Test-Gateway {
     try { Invoke-RestMethod "$baseUrl/healthz" -TimeoutSec 2 | Out-Null; return $true } catch { return $false }
@@ -53,7 +91,7 @@ if (-not (Test-Gateway)) {
         & (Join-Path $PSScriptRoot 'build-server.ps1')
     }
     Write-Host '==> starting gateway' -ForegroundColor Cyan
-    $serverProcess = Start-Process -FilePath $serverExe -ArgumentList '-addr', '127.0.0.1:8080' -PassThru -WindowStyle Hidden
+    $serverProcess = Start-Process -FilePath $serverExe -ArgumentList '-addr', "127.0.0.1:$Port" -PassThru -WindowStyle Hidden
     for ($i = 0; $i -lt 60 -and -not (Test-Gateway); $i++) { Start-Sleep -Milliseconds 250 }
     if (-not (Test-Gateway)) { throw 'gateway did not become healthy' }
 }
@@ -98,33 +136,57 @@ try {
     Start-Sleep -Seconds 5
 
     # --- UE ----------------------------------------------------------------
-    Write-Host "==> UE5: join $roomName as a bot" -ForegroundColor Cyan
-    Remove-Item $ueShot -Force -ErrorAction SilentlyContinue
-    $ueProject = Join-Path $repo 'clients\ue5\UE5GameClient\UE5GameClient.uproject'
-    $ueEditor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
-    $ueProcess = Start-Process -FilePath $ueEditor -PassThru -NoNewWindow `
-        -RedirectStandardOutput (Join-Path $logs 'ue-room-shot.log') `
-        -RedirectStandardError (Join-Path $logs 'ue-room-shot.err') `
-        -ArgumentList (@($ueProject, '-game', '-windowed', '-ResX=1280', '-ResY=720',
-            '-nosplash', '-AlwaysOnTop', '-AI003Room', '-AI003RoomBot', '-AI003RoomShot',
-            "-AI003RoomName=$roomName", '-log') + $(if ($Sync -eq 'arena') { @('-AI003Arena') } else { @() }))
-    Start-Sleep -Seconds 8
-    [void](Focus-UE)
+    if ($singleEnd) {
+        Write-Host '==> UE5: not participating (single-end run)' -ForegroundColor Cyan
+    }
+    elseif ($degraded) {
+        Write-Host '==> UE5: skipped (degraded run)' -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "==> UE5: join $roomName as a bot" -ForegroundColor Cyan
+        Remove-Item $ueShot -Force -ErrorAction SilentlyContinue
+        $ueProject = Join-Path $repo 'clients\ue5\UE5GameClient\UE5GameClient.uproject'
+        $ueProcess = Start-Process -FilePath $ueEditor -PassThru -NoNewWindow `
+            -RedirectStandardOutput (Join-Path $logs 'ue-room-shot.log') `
+            -RedirectStandardError (Join-Path $logs 'ue-room-shot.err') `
+            -ArgumentList (@($ueProject, '-game', '-windowed', '-ResX=1280', '-ResY=720',
+                '-nosplash', '-AlwaysOnTop', '-AI003Room', '-AI003RoomBot', '-AI003RoomShot',
+                "-AI003RoomName=$roomName", '-log') + $(if ($Sync -eq 'arena') { @('-AI003Arena') } else { @() }))
+        Start-Sleep -Seconds 8
+        [void](Focus-UE)
+    }
 
-    # --- wait for two fighters ---------------------------------------------
-    Write-Host '==> waiting for two fighters in one room' -ForegroundColor Cyan
+    # --- wait for the required fighters --------------------------------------
+    Write-Host "==> waiting for $requiredPlayers fighter(s) in one room" -ForegroundColor Cyan
     $deadline = (Get-Date).AddSeconds(150)
     $ready = $false
     while ((Get-Date) -lt $deadline) {
         try {
             $demo = Get-Demo
-            $room = @($demo.rooms) | Where-Object { $_.id -eq $roomName -and $_.players -ge 2 } | Select-Object -First 1
+            $room = @($demo.rooms) | Where-Object { $_.id -eq $roomName -and $_.players -ge $requiredPlayers } | Select-Object -First 1
             if ($room) { $ready = $true; break }
         }
         catch { }
         Start-Sleep -Seconds 1
     }
-    if (-not $ready) { throw 'timed out waiting for two fighters (Unity/UE did not join)' }
+    if (-not $ready -and $useUE) {
+        # -WithUE was requested but the UE client never joined: a real degradation,
+        # not a pass. Fall back to the Unity client and keep it visible.
+        $degraded = $true
+        $requiredPlayers = 1
+        Write-Host 'DEGRADED: 未经双端验证 - UE client did not join; falling back to Unity only' -ForegroundColor Yellow
+        $fallback = (Get-Date).AddSeconds(60)
+        while ((Get-Date) -lt $fallback) {
+            try {
+                $demo = Get-Demo
+                $room = @($demo.rooms) | Where-Object { $_.id -eq $roomName -and $_.players -ge $requiredPlayers } | Select-Object -First 1
+                if ($room) { $ready = $true; break }
+            }
+            catch { }
+            Start-Sleep -Seconds 1
+        }
+    }
+    if (-not $ready) { throw "timed out waiting for $requiredPlayers fighter(s) (clients did not join)" }
     Write-Host ("==> room {0} has {1} fighters, letting the HUD settle" -f $room.id, $room.players) -ForegroundColor Cyan
     Start-Sleep -Seconds $Seconds
 
@@ -141,18 +203,36 @@ try {
     }
 
     # --- wait for the UE screenshot (rendered by the game itself) ----------
-    Write-Host '==> waiting for UE room screenshot' -ForegroundColor Cyan
-    $ueDeadline = (Get-Date).AddSeconds(150)
-    while ((Get-Date) -lt $ueDeadline -and $ueProcess -and -not $ueProcess.HasExited) {
-        Start-Sleep -Seconds 1
+    if ($singleEnd) {
+        Write-Host '==> UE room screenshot: not applicable (single-end run)' -ForegroundColor Cyan
     }
-    if ($ueProcess -and -not $ueProcess.HasExited) { $ueProcess.Kill() }
-    if (-not (Test-Path $ueShot)) { throw "UE room shot missing: $ueShot (see artifacts/logs/ue-room-shot.log)" }
+    elseif ($degraded) {
+        Write-Host '==> UE room screenshot: skipped (degraded run)' -ForegroundColor Yellow
+    }
+    else {
+        Write-Host '==> waiting for UE room screenshot' -ForegroundColor Cyan
+        $ueDeadline = (Get-Date).AddSeconds(150)
+        while ((Get-Date) -lt $ueDeadline -and $ueProcess -and -not $ueProcess.HasExited) {
+            Start-Sleep -Seconds 1
+        }
+        if ($ueProcess -and -not $ueProcess.HasExited) { $ueProcess.Kill() }
+        if (-not (Test-Path $ueShot)) {
+            $degraded = $true
+            Write-Host "DEGRADED: 未经双端验证 - UE room shot missing: $ueShot" -ForegroundColor Yellow
+        }
+    }
     # --- wait for Unity to finish ------------------------------------------
     if ($unityProcess -and -not $unityProcess.WaitForExit(150000)) { $unityProcess.Kill() }
     if (-not (Test-Path $unityShot)) { throw "Unity room shot missing: $unityShot (see artifacts/logs/unity-room-shot.log)" }
 
     # --- compose -----------------------------------------------------------
+    if ($singleEnd) {
+        Write-Host '==> room comparison skipped (SINGLE-END: 未经双端验证)' -ForegroundColor Cyan
+    }
+    elseif ($degraded) {
+        Write-Host '==> room comparison skipped (DEGRADED: 未经双端验证)' -ForegroundColor Yellow
+    }
+    else {
     Write-Host '==> composing room comparison' -ForegroundColor Cyan
     $left = [System.Drawing.Image]::FromFile($unityShot)
     $right = [System.Drawing.Image]::FromFile($ueShot)
@@ -182,6 +262,7 @@ try {
         Copy-Item $compare $published -Force
         Write-Host "published: $published"
     }
+    }
 
     $demo = Get-Demo
     Write-Host ''
@@ -194,7 +275,7 @@ try {
 
     # Clients intentionally exit after their screenshots, so the empty-room
     # cleanup may already have removed the room by now; that is not a failure.
-    if ($room.players -lt 2) { $problems += "room had $($room.players) fighters at capture time" }
+    if ($room.players -lt $requiredPlayers) { $problems += "room had $($room.players) fighters at capture time (needed $requiredPlayers)" }
     if ($roomAfter) {
         if ($roomAfter.tick -le $room.tick) { $problems += "room tick did not advance ($($room.tick) -> $($roomAfter.tick))" }
     }
@@ -208,7 +289,8 @@ try {
         if ($hitDelta -le 0) { $problems += "no hit events observed" }
     }
 
-    foreach ($shot in @($unityShot, $ueShot)) {
+    $shots = if ($degraded -or $singleEnd) { @($unityShot) } else { @($unityShot, $ueShot) }
+    foreach ($shot in $shots) {
         if (-not (Test-Path $shot)) { $problems += "missing screenshot $shot"; continue }
         if ((Get-Item $shot).Length -lt 20000) { $problems += "screenshot too small: $shot" }
     }
@@ -221,16 +303,25 @@ try {
         $playersNow, $tickDelta, $frameDelta, $attackDelta, $hitDelta)
 
     $metricsPath = Join-Path $repo 'artifacts\demo\room.json'
+    $mode = if ($degraded) { 'degraded' } elseif ($singleEnd) { 'single-end' } else { 'dual' }
     [ordered]@{
-        generatedAt = (Get-Date).ToString('o')
-        roomId      = $room.id
-        players     = [int]$playersNow
-        tickDelta   = [int]$tickDelta
-        frameDelta  = [int]$frameDelta
-        attackDelta = [int]$attackDelta
-        hitDelta    = [int]$hitDelta
-        problems    = @($problems)
-        passed      = ($problems.Count -eq 0)
+        generatedAt     = (Get-Date).ToString('o')
+        roomId          = $room.id
+        players         = [int]$playersNow
+        tickDelta       = [int]$tickDelta
+        frameDelta      = [int]$frameDelta
+        attackDelta     = [int]$attackDelta
+        hitDelta        = [int]$hitDelta
+        problems        = @($problems)
+        passed          = ($problems.Count -eq 0)
+        # mode spells out the coverage: 'dual' is the only two-client proof.
+        # 'single-end' is normal default coverage (Unity only, exit 0);
+        # 'degraded' means -WithUE was requested but UE never participated (exit 2).
+        mode            = $mode
+        singleEnd       = [bool]$singleEnd
+        degraded        = [bool]$degraded
+        ueSkipped       = [bool]($degraded -or $singleEnd)
+        requiredPlayers = [int]$requiredPlayers
     } | ConvertTo-Json -Depth 4 | Set-Content -Path $metricsPath -Encoding UTF8
     Write-Host "metrics: $metricsPath"
 
@@ -255,6 +346,16 @@ finally {
     }
 }
 
+# Real degradation (UE was requested and did not participate) must never look like
+# a full pass: exit 2 distinguishes it from PASS (0) and failure (1). Single-end is
+# the normal default mode and exits 0 -- but it prints SINGLE-END and room.json says
+# mode='single-end', so nobody can mistake it for a two-client proof.
+if ($degraded) {
+    Write-Host ''
+    Write-Host 'DEGRADED: 未经双端验证 - -WithUE was requested but UE did not participate' -ForegroundColor Yellow
+    Write-Host '          assertions above are Unity-only; exit code 2 (not a full pass)' -ForegroundColor Yellow
+    exit 2
+}
 
 
 

@@ -3,7 +3,8 @@
 # sequenced snapshots, delta compression and acks. No Unity/UE required.
 [CmdletBinding()]
 param(
-    [string]$Url = 'ws://127.0.0.1:8080/ws',
+    [string]$Url = '',
+    [int]$Port = 8080,
     [double]$Seconds = 4
 )
 
@@ -13,12 +14,15 @@ $serverExe = Join-Path $root 'server\bin\ai003-server.exe'
 $artifacts = Join-Path $root 'artifacts\demo'
 New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
 
-$health = ($Url -replace '^ws', 'http') -replace '/ws$', '/healthz'
+. (Join-Path $PSScriptRoot '_ports.ps1')
+if ([string]::IsNullOrWhiteSpace($Url)) { $Url = ConvertTo-WsUrl "http://127.0.0.1:$Port" }
+
+$health = Get-HealthUrl $Url
 $started = $false
 try { Invoke-RestMethod -Uri $health -TimeoutSec 2 | Out-Null }
 catch {
     if (-not (Test-Path $serverExe)) { throw "missing $serverExe; run scripts/build-server.cmd" }
-    Start-Process -FilePath $serverExe -ArgumentList '-addr', '127.0.0.1:8080', '-world', (Join-Path $root 'world') -WindowStyle Hidden | Out-Null
+    Start-Process -FilePath $serverExe -ArgumentList '-addr', "127.0.0.1:$Port", '-world', (Join-Path $root 'world') -WindowStyle Hidden | Out-Null
     $started = $true
     for ($i = 0; $i -lt 40; $i++) {
         Start-Sleep -Milliseconds 250
@@ -43,7 +47,6 @@ try {
 }
 finally {
     if ($started) {
-        $conn = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 8080 } | Select-Object -First 1
-        if ($conn) { taskkill /PID $conn.OwningProcess /T /F 2>&1 | Out-Null }
+        [void](Stop-PortListener -Port $Port)
     }
 }

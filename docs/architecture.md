@@ -53,19 +53,19 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 
 | 场景 | 命令 / 操作 | 期望 |
 | --- | --- | --- |
-| 世界数据一致 | `scripts\smoke-unity.cmd`、`scripts\smoke-ue5-world.cmd` | 两端 PASS，出生点/地形一致 |
+| 世界数据一致 | `scripts\smoke-unity.cmd`（UE 侧 `smoke-ue5-world.cmd` 已随 UE5 退役转为 opt-in） | Unity PASS，出生点/地形一致 |
 | 无头协议 + 指标 | `scripts\demo-scenario.cmd -Seconds 8` | 同房间、约 160 帧、`maxTickGap ≤ 2`、有 attack/hit |
-| 双端同机位对照 | `scripts\demo-compare.cmd` | 固定机位/角色/天空；亮度差 2.5、平均像素差 7.2/255、95.6% ≤24 |
-| 同房双端 | `scripts\demo-room.cmd` | 一条命令起网关 + 两端同房 + 双端截图 + 计数；默认断言 fighters=2/tick 前进/attack>0/hit>0 |
+| 双端同机位对照 | `scripts\demo-compare.cmd` | Unity vs UE5；UE 退役后为**可选**回归。固定机位/角色/天空；亮度差 2.5、平均像素差 7.2/255、95.6% ≤24 |
+| 同房双端 | `scripts\demo-room.cmd` | ⚠️ UE 退役后未同步：仍会起 UE bot，本机无 UE 时 `fighters=2` 断言无法满足，待决策 |
 | 世界规模 | `scripts\build-world.cmd -Size 4096` + `GET /world` | 生成 2/4/8 km 世界并同步两端；Unity 按 128 m chunk 流式+LOD，`/world` 返回元数据与进程指标 |
 | 一键演示 | `scripts\demo-hub.cmd` | scenario + compare + room 全跑，生成 `artifacts/demo/report.md`/`report.json`，含基线对比 |
 | 状态面板 | `GET /dashboard` | 轮询 `/demo` 与 `/world`，浏览器直接看房间/tick/交通/世界尺寸/内存 |
-| 输入映射 | `scripts\check-ue-input.cmd` | UE 相机相对 WASD → 8 方向查表，`-AI003InputProbe` 自动校验 |
+| 输入映射 | `scripts\check-ue-input.cmd` | UE 相机相对 WASD → 8 方向查表（UE 已退役，留作历史/opt-in） |
 | Unity ECS | PlayMode `FighterEcsTests` | 实体→Transform、整数预测、Burst 基准（4000 远端 job 0.118 ms vs 托管 3.569 ms） |
-| 对照回归 | `smoke-all -WithCompare` | 亮度差 ≤8、像素差 ≤24 的占比 ≥80% 才算通过 |
-| 双端互见 | Unity Play Mode（`AI003_ROOM=1`）+ UE `-game -AI003Room` | 两端截图互见，HP 同步 |
+| 对照回归 | `smoke-all -WithCompare` | 亮度差 ≤8、像素差 ≤24 的占比 ≥80% 才算通过（UE 退役后为可选） |
+| 双端互见 | Unity Play Mode（`AI003_ROOM=1`）（UE `-game -AI003Room` 已退役） | 两端截图互见，HP 同步；UE 退役后仅 Unity 端可验 |
 | 客户端预测 | 看 HUD `pred / corr / 误差` | `pred = server + 3`，静止误差 0 |
-| 断线重连 | `ConnectionBootstrap.DebugDisconnect()` 或杀 UE | 30 s 内同 `roomId`/`playerId` 恢复 |
+| 断线重连 | `ConnectionBootstrap.DebugDisconnect()` 或杀掉客户端进程 | 30 s 内同 `roomId`/`playerId` 恢复 |
 | 战斗表现 | 同房对战 | 围栏、前冲、伤害数字、倒地/复活 |
 
 ## 5. 观测点（演示时直接展示）
@@ -77,7 +77,7 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 | `scripts\demo-status.cmd` | 上述指标的易读输出（`-Json` 机器可读） |
 | `cmd/democlient` | 无头客户端场景的 JSON 摘要：帧数、首末 tick、最大间隔、HP、事件 |
 | `demo/baseline.json` | 指标基线（帧率、tick 间隔、出拳/命中速率），`-UpdateBaseline` 更新 |
-| `artifacts/demo/diff.png` | 双端对照的差分热力图（黑=一致，红/黄=差异大） |
+| `artifacts/demo/diff.png` | 双端对照的差分热力图（黑=一致，红/黄=差异大；UE 退役后该对照为可选） |
 | 客户端 HUD | `tick / pred / corr / 误差 / hp / fighters / roomId` |
 
 ## 6. 验证矩阵
@@ -86,21 +86,22 @@ Unity 6 与 UE5；两个客户端共享同一份世界字节、同一套角色�
 # Go 侧
 cd server; go build ./...; go vet ./...; go test ./... -count=1
 
-# 引擎侧
+# 引擎侧（Unity）
 .\scripts\smoke-unity.cmd
 .\scripts\test-unity-playmode.cmd
-.\scripts\smoke-ue5-world.cmd -SkipBuild
+# UE5 已退役，UE 步骤只在显式 -WithUE / -WithUEWorld 时执行，需本机装 UE 5.8：
+# .\scripts\smoke-ue5-world.cmd -SkipBuild
 
 # 演示链路（需服务器已启动）
 .\scripts\demo-scenario.cmd -Seconds 8          # 与 demo/baseline.json 对比
 .\scripts\demo-scenario.cmd -Seconds 8 -UpdateBaseline
-.\scripts\demo-compare.cmd                      # 双端同机位对照（约 2 min）
+.\scripts\demo-compare.cmd                      # Unity vs UE5 同机位对照（约 2 min，UE 退役后为可选）
 .\scripts\demo-compare.cmd -MaxBrightnessDelta 8 -MinWithin24 80   # 带阈值
-.\scripts\demo-room.cmd                        # 同房双端 + 双端截图
+.\scripts\demo-room.cmd                        # 同房 + 截图（UE 端已退役，默认只看 Unity）
 .\scripts\smoke-all.cmd -WithCompare -WithRoom                     # 全链路
 
-# 全链路（可选跳过引擎）
-.\scripts\smoke-all.cmd -SkipUnity -SkipUE
+# 只跑服务端链路（跳过引擎）
+.\scripts\smoke-all.cmd -SkipUnity -SkipDemo
 ```
 
 `demo/baseline.json` 保存帧率、最大 tick 间隔、出拳/命中速率、房间帧速率；
@@ -108,16 +109,22 @@ cd server; go build ./...; go vet ./...; go test ./... -count=1
 CI 由 [.github/workflows/verify.yml](../.github/workflows/verify.yml) 在
 windows-latest 上跑 Go 测试 + 无头演示（引擎不在 CI 内）。
 
+> ⚠️ **CI 绿 ≠ Unity/画面通过。** CI 只跑 `go build/vet/test` + 无头 `demo-scenario`，
+> 不含任何引擎测试（没有 `smoke-unity`、没有 PlayMode、没有出图）。引擎与画面的结论
+> 只能来自本机 L2/L3，按 [docs/verification-tiers.md](verification-tiers.md) 选档。
+> 另外 `-SkipUE` 不是 `smoke-all` 的参数（UE 退役后已删除），传了会参数绑定失败。
+
 ## 7. 非目标
 
 - 玩法深度：技能、任务、经济、匹配大厅、排行榜；
 - 生产级规模：当前单网关、房间在内存、无持久化与 AOI；
 - 完整反作弊：服务器做边界/非法值/频率约束，但不做行为分析；
 - 正式美术与特效：UE 侧战斗反馈仍是 debug 图元。
-- 曝光/色调：UE 的 `AEM_Manual` 在该场景会压成黑帧，改用 Histogram + `min=max=0.8 EV`
-  锁定曝光；Unity 侧用 ACES tonemapping 卷。仍有细微色彩分级差异（平均像素差 7.2/255）。
-- UE 坐标映射：Unity `(x, y, z)` → UE `(x, −z, y)`（`y` 是高度）。早期用 `(x, z, y)`，
-  行列式为 −1，是反射——地形会左右镜像；对照图的地形轮廓不一致才暴露出来。同步修正了
-  地形行序/法线、出生点、世界同步、房间坐标与朝向。
+- **历史（UE5 已退役，以下两条仅存档）**
+  - 曝光/色调：UE 的 `AEM_Manual` 在该场景会压成黑帧，改用 Histogram + `min=max=0.8 EV`
+    锁定曝光；Unity 侧用 ACES tonemapping 卷。仍有细微色彩分级差异（平均像素差 7.2/255）。
+  - UE 坐标映射：Unity `(x, y, z)` → UE `(x, −z, y)`（`y` 是高度）。早期用 `(x, z, y)`，
+    行列式为 −1，是反射——地形会左右镜像；对照图的地形轮廓不一致才暴露出来。同步修正了
+    地形行序/法线、出生点、世界同步、房间坐标与朝向。
 
 这些取舍是为了让演示**可复现、可观测、可回归**，而不是把时间花在玩法内容上。

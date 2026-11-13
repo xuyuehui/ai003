@@ -87,47 +87,244 @@ namespace AI003.EditorTools
             var colors = theme.BuildColorGrid(data);
 
             var root = new GameObject("[AI003][ASHKAR] World");
-            var terrain = root.AddComponent<WorldTerrain>();
-            terrain.Build(data, colors, "AI003/AshkarTerrain");
-            terrain.TerrainMaterial.SetFloat("_Smoothness", 0.22f);
-            terrain.TerrainMaterial.SetFloat("_RippleStrength", 0.11f);
-            terrain.TerrainMaterial.SetFloat("_Speckle", 0.22f);
-            var detail = AshkarTextures.DetailNormal();
-            terrain.TerrainMaterial.SetTexture("_DetailNormal", detail);
-            terrain.TerrainMaterial.SetFloat("_DetailScale1", 0.085f);
-            terrain.TerrainMaterial.SetFloat("_DetailScale2", 0.34f);
-            terrain.TerrainMaterial.SetFloat("_DetailStrength", 0.55f);
+            var paths = new System.Collections.Generic.List<string>();
 
-            foreach (var r in root.GetComponentsInChildren<MeshRenderer>())
+            // Everything this tool touches outside the throwaway root is snapshotted
+            // here and put back in the finally: a still render must never leak into
+            // OpenWorld.unity, the URP asset or the shared fog material.
+            RenderSettingsState sceneState = CaptureRenderSettings();
+
+            var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+            float prevShadowDistance = urp != null ? urp.shadowDistance : 0f;
+
+            try
             {
-                if (r.name.StartsWith("Chunk_"))
+                var terrain = root.AddComponent<WorldTerrain>();
+                terrain.Build(data, colors, "AI003/AshkarTerrain");
+                terrain.TerrainMaterial.SetFloat("_Smoothness", 0.22f);
+                terrain.TerrainMaterial.SetFloat("_RippleStrength", 0.11f);
+                terrain.TerrainMaterial.SetFloat("_Speckle", 0.22f);
+                var detail = AshkarTextures.DetailNormal();
+                terrain.TerrainMaterial.SetTexture("_DetailNormal", detail);
+                terrain.TerrainMaterial.SetFloat("_DetailScale1", 0.085f);
+                terrain.TerrainMaterial.SetFloat("_DetailScale2", 0.34f);
+                terrain.TerrainMaterial.SetFloat("_DetailStrength", 0.55f);
+
+                foreach (var r in root.GetComponentsInChildren<MeshRenderer>())
                 {
-                    r.shadowCastingMode = ShadowCastingMode.On;
+                    if (r.name.StartsWith("Chunk_"))
+                    {
+                        r.shadowCastingMode = ShadowCastingMode.On;
+                    }
+                }
+
+                if (terrain.Water != null)
+                {
+                    terrain.Water.transform.localScale = new Vector3(24f, 1f, 24f);
+                }
+
+                if (urp != null)
+                {
+                    urp.shadowDistance = 420f;
+                }
+
+                Vector3 site;
+                Vector3 viewDir;
+                bool pinned = ResolveRig(data, out site, out viewDir);
+                // "pinned" only when every vantage input came from the environment:
+                // a half-pinned frame is still auto and must not be compared.
+                string rigSource = pinned ? "pinned" : "auto";
+
+                Run("S2", () => paths.Add(RenderS2(data, terrain, outDir, site, viewDir, rigSource)));
+                Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
+                Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
+                Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir, rigSource)));
+            }
+            finally
+            {
+                if (urp != null)
+                {
+                    urp.shadowDistance = prevShadowDistance;
+                }
+                RestoreRenderSettings(sceneState);
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+
+            return paths.ToArray();
+        }
+
+        /// <summary>Site and direction for the world shots.</summary>
+        /// <remarks>
+        /// Auto-picked by default. Pin it for comparable before/after frames:
+        ///   AI003_STILL_SITE="x,z"   AI003_STILL_YAW="degrees"
+        ///   AI003_STILL_FLAT="x,z"   (S1 plaza)    AI003_STILL_SALT="x,z"  (S4 salt flat)
+        /// Environment variables so the menu item and -executeMethod both work.
+        /// </remarks>
+        private static bool ResolveRig(WorldData data, out Vector3 site, out Vector3 viewDir)
+        {
+            bool pinnedSite = TryParsePoint(data, "AI003_STILL_SITE", out site);
+            bool pinnedYaw = TryParseYaw(out float yawDeg);
+
+            if (!pinnedSite || !pinnedYaw)
+            {
+                Vector3 autoSite = FindViewpoint(data, out Vector3 autoDir);
+                if (!pinnedSite)
+                {
+                    site = autoSite;
+                }
+
+                if (!pinnedYaw)
+                {
+                    viewDir = autoDir;
+                    return pinnedSite;
                 }
             }
 
-            if (terrain.Water != null)
+            float rad = yawDeg * Mathf.Deg2Rad;
+            viewDir = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
+            return true;
+        }
+
+        /// <summary>Reads "x,z" from an environment variable; false when unset or malformed.</summary>
+        private static bool TryParsePoint(WorldData data, string variable, out Vector3 point)
+        {
+            point = Vector3.zero;
+            string raw = Environment.GetEnvironmentVariable(variable);
+            if (string.IsNullOrEmpty(raw))
             {
-                terrain.Water.transform.localScale = new Vector3(24f, 1f, 24f);
+                return false;
             }
 
-            var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
-            if (urp != null)
+            string[] parts = raw.Split(',');
+            if (parts.Length < 2)
             {
-                urp.shadowDistance = 420f;
+                Debug.LogWarning($"[AI003][ASHKAR] {variable}='{raw}' is not 'x,z' — falling back to auto");
+                return false;
             }
 
-            Vector3 site = FindViewpoint(data, out Vector3 viewDir);
-            Debug.Log($"[AI003][ASHKAR] site={site} dir={viewDir} h={data.HeightAt(site.x, site.z):F1}");
+            bool parsedX = float.TryParse(parts[0].Trim(),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x);
+            bool parsedZ = float.TryParse(parts[1].Trim(),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float z);
+            if (!parsedX || !parsedZ)
+            {
+                Debug.LogWarning($"[AI003][ASHKAR] {variable}='{raw}' is not 'x,z' — falling back to auto");
+                return false;
+            }
 
-            var paths = new System.Collections.Generic.List<string>();
-            Run("S2", () => paths.Add(RenderS2(data, terrain, outDir, site, viewDir)));
-            Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
-            Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
-            Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir)));
+            point = new Vector3(x, data.HeightAt(x, z), z);
+            return true;
+        }
 
-            UnityEngine.Object.DestroyImmediate(root);
-            return paths.ToArray();
+        /// <summary>Reads a yaw in degrees from AI003_STILL_YAW.</summary>
+        private static bool TryParseYaw(out float yawDeg)
+        {
+            yawDeg = 0f;
+            string raw = Environment.GetEnvironmentVariable("AI003_STILL_YAW");
+            if (string.IsNullOrEmpty(raw))
+            {
+                return false;
+            }
+
+            if (!float.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out yawDeg))
+            {
+                Debug.LogWarning($"[AI003][ASHKAR] AI003_STILL_YAW='{raw}' is not a number — falling back to auto");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Scene-wide render state that the still shots mutate.</summary>
+        private struct RenderSettingsState
+        {
+            public Material skybox;
+            public bool fog;
+            public FogMode fogMode;
+            public Color fogColor;
+            public float fogStart;
+            public float fogEnd;
+            public AmbientMode ambientMode;
+            public Color ambientSky;
+            public Color ambientEquator;
+            public Color ambientGround;
+            public float reflectionIntensity;
+            public Material fogMaterial;
+            public bool fogMaterialWasDirty;
+            public bool fogMaterialValid;
+            public Color fogMaterialTint;
+            public float fogMaterialDensity;
+            public float fogMaterialFalloff;
+            public float fogMaterialStart;
+            public float fogMaterialBaseHeight;
+        }
+
+        private static RenderSettingsState CaptureRenderSettings()
+        {
+            var state = new RenderSettingsState
+            {
+                skybox = RenderSettings.skybox,
+                fog = RenderSettings.fog,
+                fogMode = RenderSettings.fogMode,
+                fogColor = RenderSettings.fogColor,
+                fogStart = RenderSettings.fogStartDistance,
+                fogEnd = RenderSettings.fogEndDistance,
+                ambientMode = RenderSettings.ambientMode,
+                ambientSky = RenderSettings.ambientSkyColor,
+                ambientEquator = RenderSettings.ambientEquatorColor,
+                ambientGround = RenderSettings.ambientGroundColor,
+                reflectionIntensity = RenderSettings.reflectionIntensity,
+                fogMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Settings/HeightFog.mat"),
+            };
+
+            state.fogMaterialWasDirty = state.fogMaterial != null && EditorUtility.IsDirty(state.fogMaterial);
+            // Do not gate this on Material.HasProperty: it reports false in some editor
+            // contexts even for properties the shader clearly has, which silently
+            // skipped the restore. SetColor/SetFloat are no-ops on a missing property.
+            state.fogMaterialValid = state.fogMaterial != null;
+            if (state.fogMaterialValid)
+            {
+                state.fogMaterialTint = state.fogMaterial.GetColor("_FogColor");
+                state.fogMaterialDensity = state.fogMaterial.GetFloat("_Density");
+                state.fogMaterialFalloff = state.fogMaterial.GetFloat("_Falloff");
+                state.fogMaterialStart = state.fogMaterial.GetFloat("_StartDistance");
+                state.fogMaterialBaseHeight = state.fogMaterial.GetFloat("_BaseHeight");
+            }
+
+            return state;
+        }
+
+        private static void RestoreRenderSettings(RenderSettingsState state)
+        {
+            // Skybox first: the shots swap in a temp material they destroy.
+            RenderSettings.skybox = state.skybox;
+            RenderSettings.fog = state.fog;
+            RenderSettings.fogMode = state.fogMode;
+            RenderSettings.fogColor = state.fogColor;
+            RenderSettings.fogStartDistance = state.fogStart;
+            RenderSettings.fogEndDistance = state.fogEnd;
+            RenderSettings.ambientMode = state.ambientMode;
+            RenderSettings.ambientSkyColor = state.ambientSky;
+            RenderSettings.ambientEquatorColor = state.ambientEquator;
+            RenderSettings.ambientGroundColor = state.ambientGround;
+            RenderSettings.reflectionIntensity = state.reflectionIntensity;
+
+            float liveDensity = state.fogMaterial == null ? -1f : state.fogMaterial.GetFloat("_Density");
+            Debug.Log($"[AI003][ASHKAR] restore fog: valid={state.fogMaterialValid} wasDirty={state.fogMaterialWasDirty} " +
+                      $"savedDensity={state.fogMaterialDensity} liveDensity={liveDensity}");
+            if (state.fogMaterialValid)
+            {
+                state.fogMaterial.SetColor("_FogColor", state.fogMaterialTint);
+                state.fogMaterial.SetFloat("_Density", state.fogMaterialDensity);
+                state.fogMaterial.SetFloat("_Falloff", state.fogMaterialFalloff);
+                state.fogMaterial.SetFloat("_StartDistance", state.fogMaterialStart);
+                state.fogMaterial.SetFloat("_BaseHeight", state.fogMaterialBaseHeight);
+                if (!state.fogMaterialWasDirty)
+                {
+                    EditorUtility.ClearDirty(state.fogMaterial);
+                }
+            }
         }
 
         private static void Run(string name, Action action)
@@ -143,7 +340,8 @@ namespace AI003.EditorTools
         }
 
         // ------------------------------------------------------------- S2 ---
-        private static string RenderS2(WorldData data, WorldTerrain terrain, string outDir, Vector3 site, Vector3 viewDir)
+        private static string RenderS2(WorldData data, WorldTerrain terrain, string outDir, Vector3 site,
+            Vector3 viewDir, string source)
         {
             Vector3 right = new Vector3(viewDir.z, 0f, -viewDir.x);
             var camPos = site + Vector3.up * 3.5f;
@@ -184,9 +382,7 @@ namespace AI003.EditorTools
                 bloom = 0.42f,
             };
 
-            Debug.Log($"[AI003][ASHKAR] S2 cam={camPos} yaw={yaw:F1} pitch={pitch:F1} spire={spirePos} " +
-                      $"dist={(spirePos - camPos).magnitude:F0}");
-            string path = Shot(outDir, "s2_dusk", camPos, yaw, pitch, 36f, look, terrain, null);
+            string path = Shot(outDir, "s2_dusk", camPos, yaw, pitch, 36f, look, terrain, null, source);
             UnityEngine.Object.DestroyImmediate(props);
             body = null;
             return path;
@@ -198,7 +394,10 @@ namespace AI003.EditorTools
             // Well One needs flat ground, not a knoll: a plaza on a slope reads as
             // a tilted disc. Pick the broadest flat area and let the land fall away
             // behind it.
-            site = FindFlatSite(data);
+            Vector3 pinnedFlat;
+            bool flatPinned = TryParsePoint(data, "AI003_STILL_FLAT", out pinnedFlat);
+            site = flatPinned ? pinnedFlat : FindFlatSite(data);
+            string source = flatPinned ? "pinned" : "auto";
             Vector3 bestDir = Vector3.forward;
             float lowest = float.MaxValue;
             for (int k = 0; k < 8; k++)
@@ -266,10 +465,8 @@ namespace AI003.EditorTools
                 bloom = 0.30f,
             };
 
-            Debug.Log($"[AI003][ASHKAR] S1 cam={camPos} yaw={yaw:F1} pitch={pitch:F1} site={site} " +
-                      $"plaza={plaza.transform.position} spire={spirePos} dist={(site - camPos).magnitude:F0}");
             // Dawn: low contrast, cool shadows, thin ground haze.
-            string path = Shot(outDir, "s1_dawn", camPos, yaw, pitch, 56f, look, terrain, null);
+            string path = Shot(outDir, "s1_dawn", camPos, yaw, pitch, 56f, look, terrain, null, source);
             UnityEngine.Object.DestroyImmediate(props);
             return path;
         }
@@ -277,7 +474,10 @@ namespace AI003.EditorTools
         // ------------------------------------------------------------- S4 ---
         private static string RenderS4(WorldData data, WorldTerrain terrain, string outDir)
         {
-            Vector3 spot = FindSaltFlat(data);
+            Vector3 pinnedSalt;
+            bool saltPinned = TryParsePoint(data, "AI003_STILL_SALT", out pinnedSalt);
+            Vector3 spot = saltPinned ? pinnedSalt : FindSaltFlat(data);
+            string source = saltPinned ? "pinned" : "auto";
             var props = new GameObject("S4Props");
 
             var crystalShader = Shader.Find("AI003/AshkarCrystal");
@@ -339,16 +539,14 @@ namespace AI003.EditorTools
                 bloom = 1.1f,
             };
 
-            Debug.Log($"[AI003][ASHKAR] S4 cam={camPos} yaw={yaw:F1} pitch={pitch:F1} spot={spot} " +
-                      $"h={(data.HeightAt(spot.x, spot.z)):F1} dist={(spot - camPos).magnitude:F0}");
-            string path = Shot(outDir, "s4_night", camPos, yaw, pitch, 38f, look, terrain, null);
+            string path = Shot(outDir, "s4_night", camPos, yaw, pitch, 38f, look, terrain, null, source);
             UnityEngine.Object.DestroyImmediate(props);
             return path;
         }
 
         // ------------------------------------------------------------- S5 ---
         private static string RenderS5(WorldData data, WorldTerrain terrain, string outDir, Vector3 site,
-            Vector3 viewDir)
+            Vector3 viewDir, string source)
         {
             // Feed the real client path (WorldEvents) a synthetic gateway payload:
             // the same code that renders the live tide renders this frame.
@@ -404,16 +602,17 @@ namespace AI003.EditorTools
                 bloom = 0.45f,
             };
 
-            string path = Shot(outDir, "s5_tide", camPos, yaw, pitch, 52f, look, terrain, null);
+            string path = Shot(outDir, "s5_tide", camPos, yaw, pitch, 52f, look, terrain, null, source);
             UnityEngine.Object.DestroyImmediate(events.gameObject);
             return path;
         }
 
         // ----------------------------------------------------------- shot ---
         private static string Shot(string dir, string name, Vector3 camPos, float yaw, float pitch, float fov,
-            Look look, WorldTerrain terrain, GameObject props)
+            Look look, WorldTerrain terrain, GameObject props, string source)
         {
             var spawned = new System.Collections.Generic.List<GameObject>();
+            Material prevSky = RenderSettings.skybox;
 
             Vector3 sunDir = Direction(yaw + look.sunYawOffset, look.sunElevation);
             Vector3 sun2Dir = Direction(yaw + look.sunYawOffset + 128f, look.sun2Elevation);
@@ -513,9 +712,18 @@ namespace AI003.EditorTools
             camera.GetUniversalAdditionalCameraData().renderPostProcessing = true;
             spawned.Add(cameraObject);
 
+            // One line per frame — S5 included — so a drifted auto-pick shows up in
+            // the console instead of silently invalidating a before/after pair.
+            Debug.Log($"[AI003][ASHKAR] shot={name} 来源={source} " +
+                      $"cam=({camPos.x:F1},{camPos.y:F1},{camPos.z:F1}) yaw={yaw:F1} pitch={pitch:F1} fov={fov:F1}");
+
             string path = Path.Combine(dir, name + ".png");
             RenderTo(camera, path);
 
+            // Restore the skybox BEFORE destroying the temp sky material, or
+            // RenderSettings is left pointing at a destroyed object and the scene
+            // saves as "no skybox".
+            RenderSettings.skybox = prevSky;
             foreach (var go in spawned)
             {
                 UnityEngine.Object.DestroyImmediate(go);

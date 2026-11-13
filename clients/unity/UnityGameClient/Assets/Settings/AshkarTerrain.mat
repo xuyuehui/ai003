@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: AshkarTerrain
+  m_Shader: {fileID: 4800000, guid: 5afe6684dab2ce44aabc505fa9e2c2b5, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _DetailNormal:
+        m_Texture: {fileID: 2800000, guid: a74266c4e10522744ad46a9be76661b6, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _DetailScale1: 0.085
+    - _DetailScale2: 0.34
+    - _DetailStrength: 0.55
+    - _HeightFogDistance: 3000
+    - _HeightFogFalloff: 0.012
+    - _HeightFogStrength: 0.22
+    - _RippleStrength: 0.11
+    - _Smoothness: 0.22
+    - _Speckle: 0.22
+    - _Wrap: 0.35
+    m_Colors:
+    - _HeightFogColor: {r: 0.72601223, g: 0.5840785, b: 0.42896283, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

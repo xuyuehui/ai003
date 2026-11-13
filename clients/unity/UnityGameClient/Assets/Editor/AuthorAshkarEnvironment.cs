@@ -19,6 +19,7 @@ namespace AI003.EditorTools
     {
         private const string RootName = "[AI003] Environment";
         private const string Dir = "Assets/Generated/Environment";
+        private const string PostPath = "Assets/Settings/AshkarPost.asset";
 
         private static readonly Color Zenith = Hex("5E6B78");
         private static readonly Color Horizon = Hex("E4BE93");
@@ -32,12 +33,7 @@ namespace AI003.EditorTools
             Directory.CreateDirectory(Dir);
 
             var existing = GameObject.Find(RootName);
-            if (existing != null)
-            {
-                Object.DestroyImmediate(existing);
-            }
-
-            var root = new GameObject(RootName);
+            var root = existing != null ? existing : new GameObject(RootName);
 
             ApplySky();
             CreateSuns(root.transform);
@@ -93,82 +89,136 @@ namespace AI003.EditorTools
 
         private static void CreateSuns(Transform parent)
         {
-            var sunObject = new GameObject("Sun (Hes)");
-            sunObject.transform.SetParent(parent, false);
+            var sunObject = EnsureChild(parent, "Sun (Hes)");
             sunObject.transform.rotation = Quaternion.LookRotation(-Direction(-62f, 21f), Vector3.up);
-            var sun = sunObject.AddComponent<Light>();
+            var sun = EnsureBehaviour<Light>(sunObject);
             sun.type = LightType.Directional;
             sun.color = SunColor;
             sun.intensity = 1.7f;
             sun.shadows = LightShadows.Soft;
             sun.shadowStrength = 0.9f;
 
-            var sun2Object = new GameObject("Sun2 (Vyr)");
-            sun2Object.transform.SetParent(parent, false);
+            var sun2Object = EnsureChild(parent, "Sun2 (Vyr)");
             sun2Object.transform.rotation = Quaternion.LookRotation(-Direction(-62f + 128f, 26f), Vector3.up);
-            var sun2 = sun2Object.AddComponent<Light>();
+            var sun2 = EnsureBehaviour<Light>(sun2Object);
             sun2.type = LightType.Directional;
             sun2.color = Sun2Color;
             sun2.intensity = 0.22f;
             sun2.shadows = LightShadows.None;
         }
 
+        /// <summary>Direct child by name, created in place of a destroy/rebuild.</summary>
+        private static GameObject EnsureChild(Transform parent, string name)
+        {
+            var child = parent.Find(name);
+            if (child != null)
+            {
+                return child.gameObject;
+            }
+
+            var created = new GameObject(name);
+            created.transform.SetParent(parent, false);
+            return created;
+        }
+
+        private static T EnsureBehaviour<T>(GameObject go) where T : Component
+        {
+            var component = go.GetComponent<T>();
+            return component != null ? component : go.AddComponent<T>();
+        }
+
+        /// <summary>
+        /// Rebuilds the film look as a real, committed VolumeProfile. The values are the
+        /// calibrated ones (postExposure 1.25 measured against the L0 brightness), so
+        /// re-running this menu reproduces the shipped look instead of a stale draft.
+        /// </summary>
         private static void CreatePost(Transform parent)
         {
-            string path = $"{Dir}/AshkarPost.asset";
-            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(PostPath);
             if (profile == null)
             {
                 profile = ScriptableObject.CreateInstance<VolumeProfile>();
-                AssetDatabase.CreateAsset(profile, path);
-            }
-            else
-            {
-                profile.components.Clear();
+                AssetDatabase.CreateAsset(profile, PostPath);
             }
 
-            var tone = profile.Add<Tonemapping>(true);
+            // Overrides are updated in place. Recreating them would give each
+            // sub-asset a new id and churn AshkarPost.asset on every re-run.
+            var tone = EnsureVolume<Tonemapping>(profile);
             tone.mode.overrideState = true;
             tone.mode.value = TonemappingMode.ACES;
 
-            var color = profile.Add<ColorAdjustments>(true);
+            var color = EnsureVolume<ColorAdjustments>(profile);
             color.postExposure.overrideState = true;
-            color.postExposure.value = -0.15f;
+            color.postExposure.value = 1.25f;
             color.contrast.overrideState = true;
-            color.contrast.value = 12f;
+            color.contrast.value = 14f;
             color.saturation.overrideState = true;
-            color.saturation.value = -12f;
+            color.saturation.value = -14f;
             color.colorFilter.overrideState = true;
             color.colorFilter.value = new Color(1f, 0.97f, 0.92f);
 
-            var split = profile.Add<SplitToning>(true);
+            var balance = EnsureVolume<WhiteBalance>(profile);
+            balance.temperature.overrideState = true;
+            balance.temperature.value = 8f;
+
+            var split = EnsureVolume<SplitToning>(profile);
             split.shadows.overrideState = true;
             split.shadows.value = new Color(0.32f, 0.40f, 0.48f);
             split.highlights.overrideState = true;
             split.highlights.value = new Color(1f, 0.87f, 0.70f);
+            split.balance.overrideState = true;
+            split.balance.value = -5f;
 
-            var bloom = profile.Add<Bloom>(true);
+            var bloom = EnsureVolume<Bloom>(profile);
             bloom.threshold.overrideState = true;
-            bloom.threshold.value = 1.5f;
+            bloom.threshold.value = 1.60f;
             bloom.intensity.overrideState = true;
-            bloom.intensity.value = 0.35f;
+            bloom.intensity.value = 0.30f;
+            bloom.scatter.overrideState = true;
+            bloom.scatter.value = 0.72f;
 
-            var vignette = profile.Add<Vignette>(true);
+            var vignette = EnsureVolume<Vignette>(profile);
             vignette.intensity.overrideState = true;
-            vignette.intensity.value = 0.22f;
+            vignette.intensity.value = 0.30f;
+            vignette.smoothness.overrideState = true;
+            vignette.smoothness.value = 0.55f;
 
-            var grain = profile.Add<FilmGrain>(true);
+            var grain = EnsureVolume<FilmGrain>(profile);
             grain.intensity.overrideState = true;
-            grain.intensity.value = 0.12f;
+            grain.intensity.value = 0.18f;
+            grain.response.overrideState = true;
+            grain.response.value = 0.8f;
+
+            var chromatic = EnsureVolume<ChromaticAberration>(profile);
+            chromatic.intensity.overrideState = true;
+            chromatic.intensity.value = 0.10f;
 
             EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
 
-            var volumeObject = new GameObject("Post Volume");
-            volumeObject.transform.SetParent(parent, false);
-            var volume = volumeObject.AddComponent<Volume>();
+            var volumeObject = EnsureChild(parent, "Post Volume");
+            var volume = EnsureBehaviour<Volume>(volumeObject);
             volume.isGlobal = true;
             volume.priority = 10f;
-            volume.profile = profile;
+            volume.sharedProfile = profile;
+        }
+
+        /// <summary>
+        /// Existing override or a new sub-asset. A VolumeComponent created by
+        /// VolumeProfile.Add() is a plain object until it is added to the asset,
+        /// otherwise it saves as a null reference.
+        /// </summary>
+        private static T EnsureVolume<T>(VolumeProfile profile) where T : VolumeComponent
+        {
+            if (profile.TryGet(out T existing))
+            {
+                return existing;
+            }
+
+            var created = profile.Add<T>(true);
+            created.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+            AssetDatabase.AddObjectToAsset(created, profile);
+            return created;
         }
 
         private static void ApplyFogAndAmbient()

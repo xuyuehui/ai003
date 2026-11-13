@@ -48,9 +48,9 @@ type NodeState struct {
 
 // WorldState rides along with every snapshot.
 type WorldState struct {
-	Elapsed float64    `json:"elapsed"`
-	Tide    TideState  `json:"tide"`
-	Elder   ElderState `json:"elder"`
+	Elapsed float64     `json:"elapsed"`
+	Tide    TideState   `json:"tide"`
+	Elder   ElderState  `json:"elder"`
 	Nodes   []NodeState `json:"nodes"`
 }
 

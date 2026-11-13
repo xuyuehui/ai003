@@ -21,7 +21,12 @@ type ArenaRoom struct {
 	historyN int
 }
 
-const arenaHistorySize = 128
+const (
+	arenaHistorySize = 128
+	// maxQueuedCmds bounds the per-player look-ahead buffer; the oldest queued
+	// commands are dropped first, so a burst never grows the queue without end.
+	maxQueuedCmds = 64
+)
 
 // NewArena creates an arena-sync room with the given capacity.
 func NewArena(capacity int) *ArenaRoom {
@@ -69,8 +74,11 @@ func (a *ArenaRoom) Count() int               { return a.room.Count() }
 func (a *ArenaRoom) Tick() uint64             { return a.room.Tick() }
 func (a *ArenaRoom) EmptyFor() int            { return a.room.EmptyFor() }
 
-// SubmitCmd queues a usercmd. Duplicate or stale seq numbers are dropped; a
-// bounded look-ahead window tolerates packets arriving out of order.
+// SubmitCmd queues a usercmd. A seq that was already applied (seq <= lastSeq)
+// or that is at/below the queue head is dropped as stale; a seq inside the
+// queued window is inserted in order, so packets may arrive out of order.
+// seq 0 means "no sequence" and is always appended. The queue keeps at most
+// maxQueuedCmds entries, dropping the oldest first.
 func (a *ArenaRoom) SubmitCmd(id string, cmd Cmd) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -97,8 +105,8 @@ func (a *ArenaRoom) SubmitCmd(id string, cmd Cmd) bool {
 			}
 		}
 	}
-	if len(queue) >= 64 {
-		queue = queue[len(queue)-64:]
+	if len(queue) >= maxQueuedCmds {
+		queue = queue[len(queue)-maxQueuedCmds+1:]
 	}
 	a.cmds[id] = append(queue, cmd)
 	return true

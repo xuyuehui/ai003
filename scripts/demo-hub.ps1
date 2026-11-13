@@ -5,7 +5,11 @@
     [switch]$NoPublish,
     [switch]$KeepGateway,
     [switch]$UpdateBaseline,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$Url = '',
+    [int]$Port = 8080,
+    [switch]$WithUE,
+    [switch]$SkipUE
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,7 +18,13 @@ $repo = Split-Path $PSScriptRoot -Parent
 $artifacts = Join-Path $repo 'artifacts\demo'
 $logs = Join-Path $repo 'artifacts\logs'
 $baselinePath = Join-Path $repo 'demo\smoke-baseline.json'
-$baseUrl = 'http://127.0.0.1:8080'
+
+. (Join-Path $PSScriptRoot '_ports.ps1')
+if ([string]::IsNullOrWhiteSpace($Url)) { $Url = ConvertTo-WsUrl "http://127.0.0.1:$Port" }
+$baseUrl = ConvertTo-BaseUrl $Url
+# Children that do not take -Url (demo-compare drives the Unity player) still
+# read AI003_WS_URL; exporting it here keeps every step on the same gateway.
+$env:AI003_WS_URL = $Url
 
 New-Item -ItemType Directory -Force -Path $artifacts, $logs | Out-Null
 
@@ -40,7 +50,7 @@ if (-not (Test-Gateway)) {
         if ($LASTEXITCODE -ne 0) { throw 'server build failed' }
     }
     Write-Host '==> starting gateway' -ForegroundColor Cyan
-    Start-Process -FilePath $serverExe -ArgumentList @('-addr', '127.0.0.1:8080', '-world', (Join-Path $repo 'world')) `
+    Start-Process -FilePath $serverExe -ArgumentList @('-addr', "127.0.0.1:$Port", '-world', (Join-Path $repo 'world')) `
         -WorkingDirectory $repo -NoNewWindow `
         -RedirectStandardOutput (Join-Path $logs 'hub-gateway.log') `
         -RedirectStandardError (Join-Path $logs 'hub-gateway.err') | Out-Null
@@ -59,11 +69,20 @@ function Invoke-DemoStep {
     Write-Host "==> $Name" -ForegroundColor Cyan
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
     $ok = $true
+    $degradedStep = $false
     $errorText = ''
     try {
         $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot $ScriptFile)) + $Arguments
         & powershell @argumentList
-        if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 2) {
+            # Child ran and its assertions held, but it declared itself DEGRADED
+            # (e.g. demo-room without a UE client). Not a pass, not a hard failure.
+            $degradedStep = $true
+            $errorText = 'DEGRADED: 未经双端验证'
+            Write-Host "DEGRADED $Name : $($errorText)" -ForegroundColor Yellow
+        }
+        elseif ($exitCode -ne 0) { throw "exit code $exitCode" }
     }
     catch {
         $ok = $false
@@ -72,16 +91,17 @@ function Invoke-DemoStep {
     }
     $watch.Stop()
     $steps.Add([pscustomobject]@{
-            name    = $Name
-            ok      = $ok
-            seconds = [Math]::Round($watch.Elapsed.TotalSeconds, 1)
-            error   = $errorText
+            name     = $Name
+            ok       = $ok
+            degraded = $degradedStep
+            seconds  = [Math]::Round($watch.Elapsed.TotalSeconds, 1)
+            error    = $errorText
         })
     return $ok
 }
 
 if (-not $SkipScenario) {
-    $scenarioArgs = @()
+    $scenarioArgs = @('-Url', $Url)
     if ($NoPublish) { $scenarioArgs += '-NoPublish' }
     [void](Invoke-DemoStep -Name 'demo-scenario' -ScriptFile 'demo-scenario.ps1' -Arguments $scenarioArgs)
 }
@@ -98,7 +118,10 @@ if (-not $SkipRoom) {
         $roomProbe = Join-Path $artifacts 'room.json'
         if (Test-Path $roomProbe) { Remove-Item $roomProbe -Force }
         $label = if ($attempt -eq 1) { 'demo-room' } else { 'demo-room (retry)' }
-        $stepOk = Invoke-DemoStep -Name $label -ScriptFile 'demo-room.ps1' -Arguments @('-Seconds', '4')
+        $roomStepArgs = @('-Seconds', '4', '-Url', $Url)
+        if ($WithUE) { $roomStepArgs += '-WithUE' }
+        if ($SkipUE) { $roomStepArgs += '-SkipUE' }
+        $stepOk = Invoke-DemoStep -Name $label -ScriptFile 'demo-room.ps1' -Arguments $roomStepArgs
         $roomPassed = $false
         if (Test-Path $roomProbe) {
             $roomPassed = (Get-Content $roomProbe -Raw | ConvertFrom-Json).passed
@@ -117,6 +140,19 @@ if (Test-Path $comparePath) { $compareMetrics = Get-Content $comparePath -Raw | 
 $roomMetrics = $null
 $roomPath = Join-Path $artifacts 'room.json'
 if (Test-Path $roomPath) { $roomMetrics = Get-Content $roomPath -Raw | ConvertFrom-Json }
+
+# Single-end is the normal default coverage (Unity only), so it is not a failure --
+# but the step must not read as a plain PASS either: the child reports its coverage
+# in room.json and we surface it here.
+$singleEndSteps = @()
+if ($roomMetrics -and $roomMetrics.mode -eq 'single-end') {
+    foreach ($s in $steps) {
+        if ($s.name -like 'demo-room*' -and $s.ok) {
+            $s | Add-Member -Force -NotePropertyName singleEnd -NotePropertyValue $true
+        }
+    }
+    $singleEndSteps = @($steps | Where-Object { $_.singleEnd })
+}
 
 $demo = $null
 $world = $null
@@ -139,7 +175,14 @@ $report['compare'] = $compareMetrics
 $report['room'] = $roomMetrics
 $report['demo'] = $demo
 $report['world'] = $world
-$report['passed'] = ($failed.Count -eq 0)
+$degradedSteps = @($steps | Where-Object { $_.degraded })
+$report['degraded'] = ($degradedSteps.Count -gt 0)
+$report['degradedSteps'] = @($degradedSteps | ForEach-Object { $_.name })
+$report['singleEnd'] = ($singleEndSteps.Count -gt 0)
+$report['singleEndSteps'] = @($singleEndSteps | ForEach-Object { $_.name })
+# A degraded step means "assertions held, coverage did not". That is not green.
+# Single-end is the documented default coverage, so it stays a pass -- but flagged.
+$report['passed'] = (($failed.Count -eq 0) -and (-not $report['degraded']))
 $report['failed'] = @($failed)
 $reportJson = Join-Path $artifacts 'report.json'
 $report | ConvertTo-Json -Depth 8 | Set-Content -Path $reportJson -Encoding UTF8
@@ -198,15 +241,19 @@ else { '_未运行 demo-room_' }
 
 
 $stepLines = ($steps | ForEach-Object {
-        $status = if ($_.ok) { 'PASS' } else { 'FAIL' }
+        $status = if ($_.degraded) { 'DEGRADED' } elseif ($_.singleEnd) { 'SINGLE-END' } elseif ($_.ok) { 'PASS' } else { 'FAIL' }
         "| {0} | {1} | {2} s | {3} |" -f $_.name, $status, $_.seconds, $_.error
     }) -join "`n"
+
+$overall = if ($failed.Count -gt 0) { 'FAIL' } elseif ($report.degraded) { 'DEGRADED' } elseif ($report.singleEnd) { 'PASS (single-end)' } else { 'PASS' }
 
 $markdown = @(
     '# AI003 演示报告'
     ''
     ('生成时间：' + (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))
-    ('总体：' + $(if ($report.passed) { 'PASS' } else { 'FAIL' }))
+    ('总体：' + $overall)
+    $(if ($report.degraded) { '**DEGRADED: 未经双端验证** — 步骤 ' + ($report.degradedSteps -join '、') + ' 只验证了单端。' } else { $null })
+    $(if ($report.singleEnd) { '**SINGLE-END: 未经双端验证** — 步骤 ' + ($report.singleEndSteps -join '、') + ' 按单端口径运行（默认），要双端结论请加 `-WithUE`。' } else { $null })
     ''
     '## 步骤'
     ''
@@ -237,8 +284,8 @@ Set-Content -Path $reportMd -Value $markdown -Encoding UTF8
 Write-Host ''
 Write-Host '--- demo hub ---'
 foreach ($step in $steps) {
-    $status = if ($step.ok) { 'PASS' } else { 'FAIL' }
-    Write-Host ("{0,-16} {1}  {2} s" -f $step.name, $status, $step.seconds)
+    $status = if ($step.degraded) { 'DEGRADED' } elseif ($step.singleEnd) { 'SINGLE-END' } elseif ($step.ok) { 'PASS' } else { 'FAIL' }
+    Write-Host ("{0,-16} {1,-11} {2} s" -f $step.name, $status, $step.seconds)
 }
 if ($compareMetrics) {
     Write-Host ("compare: brightness Δ{0}, mean {1}/255, within24 {2}%" -f `
@@ -253,12 +300,24 @@ Write-Host "report:   $reportMd"
 Write-Host "json:     $reportJson"
 
 if ($gatewayStarted -and -not $KeepGateway) {
-    $conn = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 8080 } | Select-Object -First 1
-    if ($conn) { taskkill /PID $conn.OwningProcess /T /F 2>&1 | Out-Null }
+    [void](Stop-PortListener -Port $Port)
 }
 
 if ($failed.Count -gt 0) {
     Write-Host ("demo hub failed: " + ($failed -join '; ')) -ForegroundColor Red
     exit 1
+}
+if ($degradedSteps.Count -gt 0) {
+    Write-Host ''
+    Write-Host 'DEGRADED: 未经双端验证' -ForegroundColor Yellow
+    Write-Host ("  降级步骤: " + (($degradedSteps | ForEach-Object { $_.name }) -join ', ')) -ForegroundColor Yellow
+    Write-Host '  断言通过但覆盖不足，不是全绿；退出码 2。' -ForegroundColor Yellow
+    exit 2
+}
+if ($singleEndSteps.Count -gt 0) {
+    Write-Host ''
+    Write-Host 'SINGLE-END: 未经双端验证' -ForegroundColor Cyan
+    Write-Host ("  单端步骤: " + (($singleEndSteps | ForEach-Object { $_.name }) -join ', ')) -ForegroundColor Cyan
+    Write-Host '  这是默认口径（Unity 单端），断言已通过；要双端结论请加 -WithUE。' -ForegroundColor Cyan
 }
 Write-Host 'demo hub passed' -ForegroundColor Green

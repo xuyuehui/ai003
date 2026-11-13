@@ -22,7 +22,7 @@ type message struct {
 }
 
 func main() {
-	url := flag.String("url", envOr("AI003_WS_URL", "ws://127.0.0.1:8080/ws"), "WebSocket URL")
+	url := flag.String("url", envOr("AI003_WS_URL", "ws://127.0.0.1:8080/ws"), "WebSocket URL (priority: -url flag > AI003_WS_URL > ws://127.0.0.1:8080/ws)")
 	count := flag.Int("n", 3, "number of pings to send")
 	timeout := flag.Duration("timeout", 5*time.Second, "timeout per ping")
 	flag.Parse()

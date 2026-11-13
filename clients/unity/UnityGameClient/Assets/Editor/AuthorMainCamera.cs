@@ -4,6 +4,7 @@ using AI003.World;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace AI003.EditorTools
@@ -22,15 +23,14 @@ namespace AI003.EditorTools
             var data = WorldData.Load(Path.Combine(Application.streamingAssetsPath, "world"));
 
             var existing = GameObject.Find(CameraName);
-            if (existing != null)
-            {
-                Object.DestroyImmediate(existing);
-            }
-
-            var go = new GameObject(CameraName);
+            var go = existing != null ? existing : new GameObject(CameraName);
             go.tag = "MainCamera";
 
-            var camera = go.AddComponent<Camera>();
+            var camera = go.GetComponent<Camera>();
+            if (camera == null)
+            {
+                camera = go.AddComponent<Camera>();
+            }
             camera.fieldOfView = 62f;
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = 8000f;
@@ -39,7 +39,15 @@ namespace AI003.EditorTools
                 : CameraClearFlags.SolidColor;
             camera.backgroundColor = RenderSettings.fogColor;
 
-            if (Object.FindAnyObjectByType<AudioListener>() == null)
+            // The scene owns its [AI003] Environment, so WorldBootstrap skips
+            // AshkarLook.ApplyScene at runtime. The camera has to carry the post
+            // switch itself or the authored volume is never applied.
+            var cameraData = camera.GetUniversalAdditionalCameraData();
+            cameraData.renderPostProcessing = true;
+            cameraData.antialiasing = AntialiasingMode.None; // edge AA comes from PC_RPAsset MSAA
+
+            if (go.GetComponent<AudioListener>() == null &&
+                Object.FindAnyObjectByType<AudioListener>() == null)
             {
                 go.AddComponent<AudioListener>();
             }
@@ -50,7 +58,10 @@ namespace AI003.EditorTools
             go.transform.position = pivot - rotation * Vector3.forward * 6.5f;
             go.transform.rotation = rotation;
 
-            go.AddComponent<OrbitCamera>();
+            if (go.GetComponent<OrbitCamera>() == null)
+            {
+                go.AddComponent<OrbitCamera>();
+            }
 
             Selection.activeGameObject = go;
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());

@@ -35,7 +35,8 @@ type delta struct {
 }
 
 func main() {
-	url := flag.String("url", "ws://127.0.0.1:8080/ws", "gateway websocket url")
+	url := flag.String("url", envOr("AI003_WS_URL", "ws://127.0.0.1:8080/ws"),
+		"gateway websocket url (priority: -url flag > AI003_WS_URL > ws://127.0.0.1:8080/ws)")
 	seconds := flag.Float64("seconds", 4, "how long to drive the room")
 	room := flag.String("room", "", "explicit room id (empty = match)")
 	flag.Parse()
@@ -161,4 +162,13 @@ func main() {
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
+}
+
+// envOr mirrors the helper in cmd/server, cmd/pingclient and cmd/democlient so
+// every client agrees on how a gateway address is overridden via the environment.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
