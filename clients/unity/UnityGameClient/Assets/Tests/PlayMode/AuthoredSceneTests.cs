@@ -32,5 +32,17 @@ namespace AI003.Tests
             Assert.AreEqual(1, cameras.Length, "the authored camera must be reused, not duplicated");
             Assert.IsNotNull(players[0].World, "bootstrap must hand the world data to the player");
         }
+
+        /// <summary>
+        /// Loads OpenWorld in single mode, so without this the baked scene — and its
+        /// authored player — would still be loaded for every later PlayMode test.
+        /// That is what made WorldBuildsAndPlayerLandsAndRuns read a player at
+        /// -629 m; see artifacts/20261114-629-verdict.md.
+        /// </summary>
+        [TearDown]
+        public void RestoreEmptyScene()
+        {
+            PlayModeSceneIsolation.LeaveEmpty("AuthoredSceneTests");
+        }
     }
 }

@@ -19,10 +19,12 @@ if ([string]::IsNullOrWhiteSpace($Url)) { $Url = ConvertTo-WsUrl "http://127.0.0
 
 $health = Get-HealthUrl $Url
 $started = $false
+$startedPid = 0
 try { Invoke-RestMethod -Uri $health -TimeoutSec 2 | Out-Null }
 catch {
     if (-not (Test-Path $serverExe)) { throw "missing $serverExe; run scripts/build-server.cmd" }
-    Start-Process -FilePath $serverExe -ArgumentList '-addr', "127.0.0.1:$Port", '-world', (Join-Path $root 'world') -WindowStyle Hidden | Out-Null
+    $serverProcess = Start-Process -FilePath $serverExe -ArgumentList '-addr', "127.0.0.1:$Port", '-world', (Join-Path $root 'world') -PassThru -WindowStyle Hidden
+    $startedPid = [int]$serverProcess.Id
     $started = $true
     for ($i = 0; $i -lt 40; $i++) {
         Start-Sleep -Milliseconds 250
@@ -47,6 +49,6 @@ try {
 }
 finally {
     if ($started) {
-        [void](Stop-PortListener -Port $Port)
+        [void](Stop-PortListener -Port $Port -ExpectedPid $startedPid)
     }
 }

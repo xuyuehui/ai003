@@ -5,6 +5,36 @@ on:
   pull_request:
 
 jobs:
+  assets:
+    name: FBX asset gate
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Stop-PortListener may only kill the PID the calling script started itself:
+      # a leftover gateway belongs to whoever started it. Static caller check plus
+      # fake listeners on 8090; no editor, no Go (see scripts\_ports.ps1).
+      - name: Port helper safety
+        shell: pwsh
+        run: .\scripts\test-ports.ps1
+
+      # A delivery of 9 FBX files with a broken binary footer once reached the
+      # repo; Unity only answered "Couldn't import ... File is corrupted" and the
+      # models silently went missing. Checking the trailing magic alone passed
+      # all 9 - the gate now validates the whole footer (id, version 7400,
+      # 120 zero bytes, magic), measured from the models Unity does import.
+      - name: FBX footer gate
+        shell: pwsh
+        run: .\scripts\check-fbx-assets.ps1
+
+      # Negative fixture: derive the four known-bad footer shapes from a real
+      # model and require the gate to reject every one of them. Deriving them
+      # beats committing corrupt binaries.
+      - name: FBX gate self-test (bad variants must be rejected)
+        shell: pwsh
+        run: .\scripts\check-fbx-assets.ps1 -SelfTest
+
   server:
     name: Go tests + headless demo
     runs-on: windows-latest

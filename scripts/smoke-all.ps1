@@ -15,7 +15,13 @@ param(
     [switch]$SkipGoTests,
     [switch]$SkipDemo,
     [switch]$WithCompare,
-    [switch]$WithRoom
+    [switch]$WithRoom,
+    # Static FBX delivery gate (header + footer magic). Cheap, no editor needed.
+    [switch]$SkipAssetCheck,
+    # Port-helper safety gate (Stop-PortListener only stops the PID it was given).
+    [switch]$SkipPorts,
+    # Point the asset gate at another tree; used to prove the gate can fail.
+    [string]$FbxRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,6 +46,28 @@ function Test-Gateway([string]$wsUrl) {
 if (-not (Test-Path $serverExe)) {
     & (Join-Path $scripts 'build-server.ps1')
 }
+
+# Static asset gate first: a corrupt FBX only shows up inside Unity as
+# "Couldn't import ... File is corrupted", long after the delivery. Fail fast.
+if (-not $SkipAssetCheck) {
+    Write-Host '==> FBX asset gate (header + footer magic)' -ForegroundColor Cyan
+    $assetArgs = @{}
+    if ($FbxRoot) { $assetArgs['Root'] = $FbxRoot }
+    & (Join-Path $scripts 'check-fbx-assets.ps1') @assetArgs
+    if ($LASTEXITCODE -ne 0) { throw 'FBX asset gate failed: a delivered model is corrupt' }
+    $results['fbx-assets'] = 'PASS'
+}
+else { $results['fbx-assets'] = 'SKIP' }
+
+# Port helper next: cleanup must never kill a gateway it did not start (a leftover
+# 8080 belongs to another run). Static caller check + fake listeners on 8090 only.
+if (-not $SkipPorts) {
+    Write-Host '==> Port helper safety (Stop-PortListener -ExpectedPid)' -ForegroundColor Cyan
+    & (Join-Path $scripts 'test-ports.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'port helper safety failed: Stop-PortListener would stop a listener it did not start' }
+    $results['ports'] = 'PASS'
+}
+else { $results['ports'] = 'SKIP' }
 
 if (-not $SkipGoTests) {
     Write-Host '==> Go unit tests' -ForegroundColor Cyan

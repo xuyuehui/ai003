@@ -24,14 +24,28 @@ function Test-PortListening {
     return ($null -ne (Get-ListeningPid -Port $Port))
 }
 
+# Stops the process listening on $Port, but only when it is the process we
+# started ourselves. A port can be occupied by someone else's gateway (another
+# demo run, a sibling bot); killing that listener would take down their work, so
+# the safe default is to refuse: without -ExpectedPid nothing is killed and a
+# warning says who holds the port.
 function Stop-PortListener {
-    param([Parameter(Mandatory)][int]$Port)
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [int]$ExpectedPid = 0
+    )
     $owner = Get-ListeningPid -Port $Port
-    if ($null -ne $owner) {
-        taskkill /PID $owner /T /F 2>&1 | Out-Null
-        return $true
+    if ($null -eq $owner) { return $false }
+    if ($ExpectedPid -le 0) {
+        Write-Warning ("port {0} is held by PID {1}; not stopping it (pass -ExpectedPid with the PID you started)" -f $Port, $owner)
+        return $false
     }
-    return $false
+    if ($owner -ne $ExpectedPid) {
+        Write-Warning ("port {0} is held by PID {1}, not by the expected PID {2}; not stopping it" -f $Port, $owner, $ExpectedPid)
+        return $false
+    }
+    taskkill /PID $owner /T /F 2>&1 | Out-Null
+    return $true
 }
 
 function ConvertTo-WsUrl {

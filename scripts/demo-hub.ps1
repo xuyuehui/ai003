@@ -43,6 +43,7 @@ function Test-Gateway {
 }
 
 $gatewayStarted = $false
+$gatewayPid = 0
 if (-not (Test-Gateway)) {
     $serverExe = Join-Path $repo 'server\bin\ai003-server.exe'
     if (-not (Test-Path $serverExe)) {
@@ -50,13 +51,18 @@ if (-not (Test-Gateway)) {
         if ($LASTEXITCODE -ne 0) { throw 'server build failed' }
     }
     Write-Host '==> starting gateway' -ForegroundColor Cyan
-    Start-Process -FilePath $serverExe -ArgumentList @('-addr', "127.0.0.1:$Port", '-world', (Join-Path $repo 'world')) `
+    $gatewayProcess = Start-Process -FilePath $serverExe -ArgumentList @('-addr', "127.0.0.1:$Port", '-world', (Join-Path $repo 'world')) `
         -WorkingDirectory $repo -NoNewWindow `
         -RedirectStandardOutput (Join-Path $logs 'hub-gateway.log') `
-        -RedirectStandardError (Join-Path $logs 'hub-gateway.err') | Out-Null
+        -RedirectStandardError (Join-Path $logs 'hub-gateway.err') -PassThru
+    $gatewayPid = [int]$gatewayProcess.Id
     $deadline = (Get-Date).AddSeconds(40)
     while ((Get-Date) -lt $deadline -and -not (Test-Gateway)) { Start-Sleep -Seconds 1 }
     if (-not (Test-Gateway)) { throw 'gateway did not become healthy' }
+    # The PID that owns the port is the only one Stop-PortListener may kill; if it
+    # differs from the process we launched, the cleanup must not touch the port.
+    $listenerPid = Get-ListeningPid -Port $Port
+    if ($null -ne $listenerPid) { $gatewayPid = $listenerPid }
     $gatewayStarted = $true
 }
 
@@ -300,7 +306,7 @@ Write-Host "report:   $reportMd"
 Write-Host "json:     $reportJson"
 
 if ($gatewayStarted -and -not $KeepGateway) {
-    [void](Stop-PortListener -Port $Port)
+    [void](Stop-PortListener -Port $Port -ExpectedPid $gatewayPid)
 }
 
 if ($failed.Count -gt 0) {
