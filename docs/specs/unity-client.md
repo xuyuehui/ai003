@@ -78,12 +78,26 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 - 机位自动搜索：内陆、高处、前方 200–600 m 是下坡、420 m 与 900 m 处仍是陆地（避免看向盐海）；
   夜景单独找"靠近盐海、地形平缓"的点。
 - 光照/后期参数在 `AshkarStill.cs` 的 `Look` 结构与 `BuildProfile()`，改完重跑即可。
+- **`artifacts/ashkar/` 只放最终件**：交付路径里的 `forest.png` / `steppe.png` 必须来自一次干净的
+  GUI 渲染。任何诊断、对照、重渲、实验帧一律写到 `artifacts/_diag/<时间戳>/` 或其它临时目录，
+  不许覆盖 `artifacts/ashkar/`。理由：验证的 watcher 只认这两个路径，一次误写就会把坏帧当成交付件
+  （2026-11-14 发生过一次：诊断渲染把 `forest.png` 覆盖成品红版）。
+- **剧照只能由带图形的编辑器渲染**（`Unity.exe -projectPath ... -executeMethod AI003.EditorTools.AshkarStill.Run`，
+  不加 `-batchmode`）。`-batchmode`（即使不带 `-nographics`）下 URP/Lit 植被拿不到环境光：
+  同机位、同代码下针叶树区域平均 luma 41.65（GUI）vs 7.24（batchmode），而 `AI003/AshkarTerrain`
+  地形不受影响（同帧非植被像素 56.35 vs 56.31）。所以 batchmode 帧只能当几何/掩码口径用
+  （`stills-vegmask.ps1` 的 UNLIT 差分），不能用于外观评审；外观结论一律看 GUI 渲染件。
+  证据：`artifacts/_diag/forest-batchmode.png` vs `artifacts/snapshots/forest.delivered.png`。
 
 ### 4.4.-2 玩家是场景里的预制体实例
 
 - 菜单 `AI003/Author Player` 通过运行时的同一个工厂（`WorldBootstrap.CreatePlayerObject`）
   造一份玩家，存成 `Assets/Prefabs/AshkarPlayer.prefab`，再在出生点实例化。
 - Play 时 `WorldBootstrap` 优先复用场景里的 `ThirdPersonController`，只在没有时新建。
+- 菜单 `AI003/Author Player Ground`：只把玩家的 **y** 放到地形表面 + 1.2 m（先取烘焙
+  `[AI003] Terrain` 的碰撞体，取不到才回退 `WorldData.HeightAt`），x/z 与朝向不动、可重复执行。
+  `AuthorOpenWorld` 在 `BakeTerrain` 之后自动跑它，所以换机器重跑作者菜单不会把玩家留在
+  旧生成数据的地表以下（事故记录见 `artifacts/20261114-629-verdict.md`）。
 - `Assets/Tests/PlayMode/AuthoredSceneTests.cs` 守这条约定：加载 `OpenWorld` 后必须
   只有 1 个玩家、1 台相机、1 个 bootstrap。
 
@@ -198,6 +212,7 @@ Assets/StreamingAssets/world/          生成物（generate-world）
 | `AI003.EditorTools.CaptureDemoShot.Run` | 固定机位对照帧（ACES 卷 + 程序化天空）→ `artifacts/demo/unity.png` |
 | `AI003.EditorTools.CaptureRoom.Run` | 进房、等 2 名玩家且预测追平（`pred >= server`）后截图 → `artifacts/demo/room-unity.png` |
 | `AI003.EditorTools.EnableUnityMcp.Run` | 打开 MCP 自动启动（stdio 桥 6400） |
+| `AI003.EditorTools.AuthorPlayerGround.RunBatch` | 把场景里的玩家落到地形表面（幂等，仅改 y） |
 
 - PlayMode 测试：`ConnectionBootstrapTests`、`WorldPlayModeTests`（落地 + 跑动）。
 - 改世界或角色物理后，至少跑 `scripts/test-unity-playmode.cmd`。

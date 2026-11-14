@@ -27,10 +27,22 @@ namespace AI003.EditorTools
             BakeTerrain.Run();
             AuthorVegetation.Run();
 
+            // Last: the player has to stand on the terrain that was just baked, and Play
+            // collides with that mesh rather than with world.json's spawn height.
+            AuthorPlayerGround.Run();
+
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[AI003][AUTHOR] OpenWorld re-authored and saved");
+        }
+
+        /// <summary>Batch entry: re-authors OpenWorld from a fresh clone, saves, exits.</summary>
+        public static void RunBatch()
+        {
+            Run();
+            Debug.Log("[AI003][AUTHOR] open-world batch done");
+            EditorApplication.Exit(0);
         }
     }
 }

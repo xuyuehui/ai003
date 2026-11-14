@@ -3207,6 +3207,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 8713e2162118d554a8b9b71cdf261b45, type: 2}
+  - {fileID: 2100000, guid: 05be9b9de1aac404daf3f642ee9e93a3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -4782,6 +4783,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: f7840aecd63dbe24392884d8348f30cd, type: 2}
+  - {fileID: 2100000, guid: 94669491aa1e54449992fa88819e56b5, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -6301,6 +6303,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 3dc9b018c005bce44ab0298c8004838f, type: 2}
+  - {fileID: 2100000, guid: ff9ae7b09c0d12f4db820133bb1ee9ac, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -6594,6 +6597,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 09001ac47665f3d458b2b883d288a474, type: 2}
+  - {fileID: 2100000, guid: 8673492d5be37cf4281f151a41eb4f1e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -12071,6 +12075,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 33d2760a1c8f8064c803f599eeddd5ca, type: 2}
+  - {fileID: 2100000, guid: cb62bd55ed80d874dab736ad931aa285, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -12488,6 +12493,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 7c5cbafb9df0e7944ab4d8f74e743eb9, type: 2}
+  - {fileID: 2100000, guid: 55057db985dd76842a3b4bf19ccdad22, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -13922,15 +13928,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6808129893759116138, guid: 377eb8efac821d54eba45ea6c88c2fcb, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 38
+      value: -3
       objectReference: {fileID: 0}
     - target: {fileID: 6808129893759116138, guid: 377eb8efac821d54eba45ea6c88c2fcb, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 46.770344
+      value: 77.123665
       objectReference: {fileID: 0}
     - target: {fileID: 6808129893759116138, guid: 377eb8efac821d54eba45ea6c88c2fcb, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -88
+      value: -18
       objectReference: {fileID: 0}
     - target: {fileID: 6808129893759116138, guid: 377eb8efac821d54eba45ea6c88c2fcb, type: 3}
       propertyPath: m_LocalRotation.w
