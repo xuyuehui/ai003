@@ -127,7 +127,14 @@ namespace AI003.World
                 }
             }
 
-            var mesh = new Mesh { name = $"Terrain_{chunkX}_{chunkZ}" };
+            // 257x257 = 66,049 vertices is past the UInt16 index limit. Without this the
+            // indices wrap at 65,535 and the chunk grows long stretched triangles
+            // (the black wedges in the stills).
+            var mesh = new Mesh
+            {
+                name = $"Terrain_{chunkX}_{chunkZ}",
+                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32,
+            };
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.colors32 = colors;

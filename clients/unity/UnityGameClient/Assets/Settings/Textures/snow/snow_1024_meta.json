@@ -1,0 +1,131 @@
+{
+  "id": "ai003_snow_1024",
+  "material": "snow",
+  "generator": "tools/matgen.py (procedural, 频域周期化 -> 严格无缝)",
+  "size": [
+    1024,
+    1024
+  ],
+  "maps": {
+    "albedo": {
+      "file": "snow_albedo_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": true,
+      "bytes": 981318,
+      "import": {
+        "textureType": "Default",
+        "sRGB": true,
+        "alphaIsTransparency": false,
+        "compression": "BC7 (desktop) / ETC2 RGBA8 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "normal": {
+      "file": "snow_normal_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 1548379,
+      "import": {
+        "textureType": "NormalMap",
+        "sRGB": false,
+        "normalMapSpace": "TangentSpace",
+        "normalMapGreenChannel": "Y+ (Unity/OpenGL)",
+        "compression": "BC5/NM (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "roughness": {
+      "file": "snow_roughness_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 376014,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "ao": {
+      "file": "snow_ao_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 290642,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    }
+  },
+  "palette": {
+    "sand_lit": "#F3D6A4",
+    "sand": "#D3A974",
+    "sand_shadow": "#9C744C",
+    "salt": "#EEE8DC",
+    "salt_shadow": "#C6BFB0",
+    "reg": "#A89376",
+    "basalt": "#2B2621",
+    "basalt_lit": "#544B42",
+    "rust": "#764833",
+    "frost": "#E6ECEE",
+    "dust_sky": "#CECBC1"
+  },
+  "guid": "TBD_BY_UNITY_IMPORT",
+  "tileWorldMeters": 4.0,
+  "usage": "雪原：风蚀雪脊(sastrugi)主起伏层 + 冰晶细节；色板 #F5F8FA/#DDE7ED/#A7BCD1，阴影走冷蓝灰",
+  "roughnessRange": [
+    0.6,
+    0.8
+  ],
+  "normalY": "Y+ (Unity/OpenGL)",
+  "seamless": "periodic FFT noise + wrapped Voronoi",
+  "biome": "snow",
+  "paletteDerived": {
+    "snow_lit": "#F5F8FA",
+    "snow_mid": "#DDE7ED",
+    "snow_shadow": "#A7BCD1",
+    "ice": "#9DB4C6"
+  },
+  "paletteSource": "docs/worldview/03-art-direction.md §3 (核心 12 色) + §3.1 (biome 色板，Unity 本轮落盘)",
+  "tilingCheck": "_preview/snow_tiling_check.png (2x2 接缝过中心 + 偏移 50%)"
+}

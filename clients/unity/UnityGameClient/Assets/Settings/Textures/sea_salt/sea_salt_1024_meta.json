@@ -1,0 +1,123 @@
+{
+  "id": "ai003_sea_salt_1024",
+  "material": "sea_salt",
+  "generator": "tools/matgen.py (procedural, 频域周期化 -> 严格无缝)",
+  "size": [
+    1024,
+    1024
+  ],
+  "maps": {
+    "albedo": {
+      "file": "sea_salt_albedo_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": true,
+      "bytes": 246604,
+      "import": {
+        "textureType": "Default",
+        "sRGB": true,
+        "alphaIsTransparency": false,
+        "compression": "BC7 (desktop) / ETC2 RGBA8 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "normal": {
+      "file": "sea_salt_normal_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 1705105,
+      "import": {
+        "textureType": "NormalMap",
+        "sRGB": false,
+        "normalMapSpace": "TangentSpace",
+        "normalMapGreenChannel": "Y+ (Unity/OpenGL)",
+        "compression": "BC5/NM (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "roughness": {
+      "file": "sea_salt_roughness_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 468706,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "foam": {
+      "file": "sea_salt_foam_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 51084,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "usage": "浪尖/盐沫掩码，shader 里混合盐沫 albedo 与破碎高光",
+        "compression": "BC4 (desktop)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    }
+  },
+  "palette": {
+    "sand_lit": "#F3D6A4",
+    "sand": "#D3A974",
+    "sand_shadow": "#9C744C",
+    "salt": "#EEE8DC",
+    "salt_shadow": "#C6BFB0",
+    "reg": "#A89376",
+    "basalt": "#2B2621",
+    "basalt_lit": "#544B42",
+    "rust": "#764833",
+    "frost": "#E6ECEE",
+    "dust_sky": "#CECBC1"
+  },
+  "guid": "TBD_BY_UNITY_IMPORT",
+  "tileWorldMeters": 8.0,
+  "usage": "盐海：方向涌浪法线（整数波数严格周期，可双层滚动）+ 盐沫掩码；不含 AO(水面无自遮蔽)",
+  "roughnessRange": [
+    0.03,
+    0.88
+  ],
+  "normalY": "Y+ (Unity/OpenGL)",
+  "seamless": "periodic FFT noise + wrapped Voronoi"
+}

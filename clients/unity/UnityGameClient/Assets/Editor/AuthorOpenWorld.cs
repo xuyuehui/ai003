@@ -25,6 +25,7 @@ namespace AI003.EditorTools
             AuthorAshkarEnvironment.Run();
             AuthorMainCamera.Run();
             BakeTerrain.Run();
+            AuthorVegetation.Run();
 
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();

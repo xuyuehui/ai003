@@ -1,0 +1,130 @@
+{
+  "id": "ai003_rock_cliff_1024",
+  "material": "rock_cliff",
+  "generator": "tools/matgen.py (procedural, 频域周期化 -> 严格无缝)",
+  "size": [
+    1024,
+    1024
+  ],
+  "maps": {
+    "albedo": {
+      "file": "rock_cliff_albedo_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": true,
+      "bytes": 1481055,
+      "import": {
+        "textureType": "Default",
+        "sRGB": true,
+        "alphaIsTransparency": false,
+        "compression": "BC7 (desktop) / ETC2 RGBA8 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "normal": {
+      "file": "rock_cliff_normal_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 3025759,
+      "import": {
+        "textureType": "NormalMap",
+        "sRGB": false,
+        "normalMapSpace": "TangentSpace",
+        "normalMapGreenChannel": "Y+ (Unity/OpenGL)",
+        "compression": "BC5/NM (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "roughness": {
+      "file": "rock_cliff_roughness_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 323446,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "ao": {
+      "file": "rock_cliff_ao_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 615520,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    }
+  },
+  "palette": {
+    "sand_lit": "#F3D6A4",
+    "sand": "#D3A974",
+    "sand_shadow": "#9C744C",
+    "salt": "#EEE8DC",
+    "salt_shadow": "#C6BFB0",
+    "reg": "#A89376",
+    "basalt": "#2B2621",
+    "basalt_lit": "#544B42",
+    "rust": "#764833",
+    "frost": "#E6ECEE",
+    "dust_sky": "#CECBC1"
+  },
+  "guid": "TBD_BY_UNITY_IMPORT",
+  "tileWorldMeters": 6.0,
+  "usage": "高山岩壁：柱状节理 + 层理台阶 + 盐霜；三平面(Triplanar)映射；裸岩 albedo，积雪不烘进贴图",
+  "roughnessRange": [
+    0.68,
+    0.88
+  ],
+  "normalY": "Y+ (Unity/OpenGL)",
+  "seamless": "periodic FFT noise + wrapped Voronoi",
+  "biome": "alpine/rock",
+  "paletteDerived": {
+    "rock_lit": "#8C8273",
+    "rock_mid": "#6A6156",
+    "rock_shadow": "#3B362E"
+  },
+  "paletteSource": "docs/worldview/03-art-direction.md §3 (核心 12 色) + §3.1 (biome 色板，Unity 本轮落盘)",
+  "tilingCheck": "_preview/rock_cliff_tiling_check.png (2x2 接缝过中心 + 偏移 50%)"
+}

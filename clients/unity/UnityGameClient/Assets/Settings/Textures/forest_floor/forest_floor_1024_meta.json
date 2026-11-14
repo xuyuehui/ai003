@@ -1,0 +1,122 @@
+{
+  "id": "ai003_forest_floor_1024",
+  "material": "forest_floor",
+  "generator": "tools/matgen.py (procedural, 频域周期化 -> 严格无缝)",
+  "size": [
+    1024,
+    1024
+  ],
+  "maps": {
+    "albedo": {
+      "file": "forest_floor_albedo_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": true,
+      "bytes": 1089017,
+      "import": {
+        "textureType": "Default",
+        "sRGB": true,
+        "alphaIsTransparency": false,
+        "compression": "BC7 (desktop) / ETC2 RGBA8 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "normal": {
+      "file": "forest_floor_normal_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 955524,
+      "import": {
+        "textureType": "NormalMap",
+        "sRGB": false,
+        "normalMapSpace": "TangentSpace",
+        "normalMapGreenChannel": "Y+ (Unity/OpenGL)",
+        "compression": "BC5/NM (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "roughness": {
+      "file": "forest_floor_roughness_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 395686,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    },
+    "ao": {
+      "file": "forest_floor_ao_1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "srgb": false,
+      "bytes": 484989,
+      "import": {
+        "textureType": "Default",
+        "sRGB": false,
+        "channel": "R (单通道灰阶)",
+        "compression": "BC4 (desktop) / ETC2 (WebGL)",
+        "maxSize": 1024,
+        "wrapMode": "Repeat",
+        "filterMode": "Trilinear",
+        "anisoLevel": 8,
+        "mipmapEnabled": true,
+        "streamingMipmaps": true,
+        "note": "guid 由 Unity 导入后填写；本 JSON 不含 guid"
+      }
+    }
+  },
+  "palette": {
+    "sand_lit": "#F3D6A4",
+    "sand": "#D3A974",
+    "sand_shadow": "#9C744C",
+    "salt": "#EEE8DC",
+    "salt_shadow": "#C6BFB0",
+    "reg": "#A89376",
+    "basalt": "#2B2621",
+    "basalt_lit": "#544B42",
+    "rust": "#764833",
+    "frost": "#E6ECEE",
+    "dust_sky": "#CECBC1"
+  },
+  "guid": "TBD_BY_UNITY_IMPORT",
+  "tileWorldMeters": 3.0,
+  "usage": "温带林地地表：落叶簇+细枝+苔藓；色板 #7C6344/#4A3B2E/#6B7A45，绿饱和度受控 ≤40%",
+  "roughnessRange": [
+    0.76,
+    0.95
+  ],
+  "normalY": "Y+ (Unity/OpenGL)",
+  "seamless": "periodic FFT noise + wrapped Voronoi"
+}

@@ -81,17 +81,25 @@ namespace AI003.EditorTools
         {
             int cellsPerChunk = (data.Resolution - 1) / WorldTerrain.ChunksPerAxis;
             float half = data.SizeMeters * 0.5f;
+            int reused = 0;
+            int created = 0;
 
             for (int cz = 0; cz < WorldTerrain.ChunksPerAxis; cz++)
             {
                 for (int cx = 0; cx < WorldTerrain.ChunksPerAxis; cx++)
                 {
                     string chunkName = $"Chunk_{cx}_{cz}";
-                    var child = root.transform.Find(chunkName);
+                    var child = FindChunk(root.transform, chunkName);
                     var chunk = child != null ? child.gameObject : new GameObject(chunkName);
                     if (child == null)
                     {
                         chunk.transform.SetParent(root.transform, false);
+                        created++;
+                        Debug.LogWarning($"[AI003][BAKE] chunk {chunkName} was missing and has been created");
+                    }
+                    else
+                    {
+                        reused++;
                     }
 
                     chunk.transform.localPosition = new Vector3(
@@ -124,6 +132,27 @@ namespace AI003.EditorTools
                     collider.sharedMesh = mesh;
                 }
             }
+
+            Debug.Log($"[AI003][BAKE] chunks reused={reused} created={created} " +
+                      "(re-using keeps the fileIDs stable across bakes)");
+        }
+
+        /// <summary>Name lookup that also sees nested or reparented chunks.</summary>
+        private static Transform FindChunk(Transform root, string name)
+        {
+            var direct = root.Find(name);
+            if (direct != null)
+            {
+                return direct;
+            }
+            foreach (var candidate in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (candidate != root && candidate.name == name)
+                {
+                    return candidate;
+                }
+            }
+            return null;
         }
 
         private static void MoveWater(GameObject root, WorldData data)
@@ -243,6 +272,9 @@ namespace AI003.EditorTools
         private static void CopyMeshData(Mesh source, Mesh target)
         {
             target.Clear();
+            // 66,049 vertices per chunk: UInt16 indices wrap at 65,535 and stretch the
+            // chunk into long black triangles.
+            target.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             target.vertices = source.vertices;
             target.normals = source.normals;
             target.colors32 = source.colors32;

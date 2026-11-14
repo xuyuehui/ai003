@@ -46,6 +46,39 @@ namespace AI003.EditorTools
             public float bloom;
         }
 
+        /// <summary>
+        /// One pinned still per terrain. The numbers are the coordinates from
+        /// artifacts/worldview-sites (site + 3.5 m, yaw, pitch, fov, subject distance),
+        /// baked in so a re-run reproduces the frames without any environment variable.
+        /// </summary>
+        private struct Frame
+        {
+            public string name;
+            public float x;
+            public float z;
+            public float yaw;
+            public float pitch;
+            public float fov;
+            public float distance;
+            public float exposure;
+            /// <summary>Sun azimuth in degrees; NaN keeps the shared look's direction.</summary>
+            public float sunAzimuth;
+        }
+
+        private static readonly Frame[] Frames =
+        {
+            new Frame { name = "desert", x = -592f, z = 248f, yaw = 76f, pitch = 4f, fov = 40f, distance = 130f, exposure = -0.35f, sunAzimuth = float.NaN },
+            new Frame { name = "ocean", x = -556f, z = 576f, yaw = 225f, pitch = 6f, fov = 64f, distance = 25f, exposure = -0.10f, sunAzimuth = float.NaN },
+            // 验证's forest point: 82 m from the stand core (−292,666), 20 conifers in
+            // front and 43% canopy coverage; the old (−116,728)/yaw236 looked away.
+            new Frame { name = "forest", x = -237f, z = 727f, yaw = 222f, pitch = 3f, fov = 50f, distance = 82f, exposure = 0.05f, sunAzimuth = float.NaN },
+            new Frame { name = "steppe", x = 423f, z = -203f, yaw = 339f, pitch = 9f, fov = 60f, distance = 100f, exposure = -0.05f, sunAzimuth = float.NaN },
+            // Snow: the mean snow normal faces ~255°, so the shared sun leaves it in
+            // shadow; 254° lights 99% of the snow pixels (verified by 验证).
+            new Frame { name = "snow", x = 109f, z = 512f, yaw = 30f, pitch = -10f, fov = 50f, distance = 103f, exposure = -0.25f, sunAzimuth = 254f },
+            new Frame { name = "mountain", x = 115f, z = -409f, yaw = 355f, pitch = -4f, fov = 46f, distance = 900f, exposure = -0.10f, sunAzimuth = float.NaN },
+        };
+
         /// <summary>Batch entry point: render, log, quit. Do not call from the GUI.</summary>
         public static void Run()
         {
@@ -96,6 +129,7 @@ namespace AI003.EditorTools
 
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             float prevShadowDistance = urp != null ? urp.shadowDistance : 0f;
+            int prevCascades = urp != null ? urp.shadowCascadeCount : 0;
 
             try
             {
@@ -121,11 +155,26 @@ namespace AI003.EditorTools
                 if (terrain.Water != null)
                 {
                     terrain.Water.transform.localScale = new Vector3(24f, 1f, 24f);
+                    var waterRenderer = terrain.Water.GetComponent<MeshRenderer>();
+                    Debug.Log($"[AI003][ASHKAR] water y={terrain.Water.transform.position.y:F1} " +
+                              $"scale={terrain.Water.transform.localScale} " +
+                              $"mat={(waterRenderer != null && waterRenderer.sharedMaterial != null ? waterRenderer.sharedMaterial.name : "null")}");
                 }
+                else
+                {
+                    Debug.LogWarning("[AI003][ASHKAR] terrain has no water object");
+                }
+
+                // The still camera world is built from scratch, so the baked vegetation
+                // has to be attached here too; its meshes are already in world space.
+                SpawnBakedVegetation(root.transform);
 
                 if (urp != null)
                 {
-                    urp.shadowDistance = 420f;
+                    // Stills-only lighting: the 34° sun over 420 m with one cascade
+                    // dragged long black wedges across every frame. Restored below.
+                    urp.shadowDistance = 120f;
+                    urp.shadowCascadeCount = 2;
                 }
 
                 Vector3 site;
@@ -135,16 +184,38 @@ namespace AI003.EditorTools
                 // a half-pinned frame is still auto and must not be compared.
                 string rigSource = pinned ? "pinned" : "auto";
 
-                Run("S2", () => paths.Add(RenderS2(data, terrain, outDir, site, viewDir, rigSource)));
-                Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
-                Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
-                Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir, rigSource)));
+                string only = Environment.GetEnvironmentVariable("AI003_STILL_ONLY");
+                bool Wanted(string shotName)
+                {
+                    return string.IsNullOrEmpty(only) ||
+                           ("," + only.ToUpperInvariant() + ",").Contains("," + shotName.ToUpperInvariant() + ",");
+                }
+
+                // S1/S2/S4/S5 are the retired historical baselines: the code stays, but
+                // they are no longer part of the image set (AI003_STILL_LEGACY=1 revives).
+                bool legacy = Environment.GetEnvironmentVariable("AI003_STILL_LEGACY") == "1";
+                if (legacy && Wanted("S2")) Run("S2", () => paths.Add(RenderS2(data, terrain, outDir, site, viewDir, rigSource)));
+                if (legacy && Wanted("S1")) Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
+                if (legacy && Wanted("S4")) Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
+                if (legacy && Wanted("S5")) Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir, rigSource)));
+
+                // Six pinned terrain frames: the acceptance set for the biome work.
+                foreach (Frame frame in Frames)
+                {
+                    Frame f = frame;
+                    if (!Wanted(f.name))
+                    {
+                        continue;
+                    }
+                    Run(f.name, () => paths.Add(RenderFrame(data, terrain, outDir, f)));
+                }
             }
             finally
             {
                 if (urp != null)
                 {
                     urp.shadowDistance = prevShadowDistance;
+                    urp.shadowCascadeCount = prevCascades;
                 }
                 RestoreRenderSettings(sceneState);
                 UnityEngine.Object.DestroyImmediate(root);
@@ -607,9 +678,152 @@ namespace AI003.EditorTools
             return path;
         }
 
-        // ----------------------------------------------------------- shot ---
+        // ------------------------------------------------------- biome frames ---
+        private static readonly System.Collections.Generic.List<MeshRenderer> VegetationRenderers =
+            new System.Collections.Generic.List<MeshRenderer>();
+        private static bool _vegetationDiagnosed;
+
+        /// <summary>
+        /// Adds the meshes baked by AI003/Author Vegetation to the throwaway still world.
+        /// They are already in world space, so the objects can sit at the origin.
+        /// </summary>
+        private static void SpawnBakedVegetation(Transform parent)
+        {
+            VegetationRenderers.Clear();
+            _vegetationDiagnosed = false;
+            string[] species = { "conifer", "dead_tree", "acacia", "acacia_small", "snow_rock", "snow_rock_b", "grass_tuft_b", "bush_a" };
+            int added = 0;
+            foreach (string slug in species)
+            {
+                var mesh = AssetDatabase.LoadAssetAtPath<Mesh>($"Assets/Generated/Vegetation/{slug}.asset");
+                if (mesh == null)
+                {
+                    continue;
+                }
+                var go = new GameObject("veg_" + slug);
+                go.transform.SetParent(parent, false);
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var renderer = go.AddComponent<MeshRenderer>();
+                var material = AssetDatabase.LoadAssetAtPath<Material>($"Assets/Settings/Vegetation/{slug}.mat");
+                if (Environment.GetEnvironmentVariable("AI003_STILL_UNLIT") == "1")
+                {
+                    // Diagnostic: a flat unlit colour separates "material/shader variant
+                    // missing" from "geometry or hierarchy wrong".
+                    material = new Material(Shader.Find("Unlit/Color"))
+                    {
+                        color = Color.HSVToRGB((added * 0.17f) % 1f, 1f, 1f),
+                    };
+                }
+                else if (Environment.GetEnvironmentVariable("AI003_STILL_CULLOFF") == "1" && material != null)
+                {
+                    // Diagnostic: reversed winding would hide every front face from the
+                    // colour pass while the shadow pass (Cull Off) still draws.
+                    material = new Material(material);
+                    material.SetFloat("_Cull", 0f);
+                }
+                if (material != null)
+                {
+                    renderer.sharedMaterial = material;
+                }
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                VegetationRenderers.Add(renderer);
+                added++;
+            }
+            Debug.Log($"[AI003][ASHKAR] vegetation meshes attached: {added}");
+        }
+
+        /// <summary>One-shot diagnostic: why the trees do not show up in the forest frame.</summary>
+        private static void DiagnoseVegetation(Camera camera)
+        {
+            if (_vegetationDiagnosed)
+            {
+                return;
+            }
+            _vegetationDiagnosed = true;
+            Debug.Log($"[AI003][VEGDIAG] camera layerMask={camera.cullingMask} pos={camera.transform.position}");
+            foreach (var renderer in VegetationRenderers)
+            {
+                var material = renderer.sharedMaterial;
+                var baseMap = material != null ? material.GetTexture("_BaseMap") : null;
+                var mesh = renderer.GetComponent<MeshFilter>()?.sharedMesh;
+                Debug.Log($"[AI003][VEGDIAG] {renderer.name} isVisible={renderer.isVisible} " +
+                          $"layer={renderer.gameObject.layer} enabled={renderer.enabled} " +
+                          $"inCameraMask={((camera.cullingMask & (1 << renderer.gameObject.layer)) != 0)} " +
+                          $"hasMat={material != null} baseMap={(baseMap != null ? baseMap.name : "NULL")} " +
+                          $"meshVerts={(mesh != null ? mesh.vertexCount : -1)} " +
+                          $"meshTris={(mesh != null ? mesh.triangles.Length : -1)} " +
+                          $"subMeshes={(mesh != null ? mesh.subMeshCount : -1)} " +
+                          $"boundsCenter={renderer.bounds.center} boundsSize={renderer.bounds.size}");
+            }
+        }
+
+        private static string RenderFrame(WorldData data, WorldTerrain terrain, string outDir, Frame frame)
+        {
+            string env = $"AI003_STILL_{frame.name.ToUpperInvariant()}_";
+
+            var site = new Vector3(frame.x, data.HeightAt(frame.x, frame.z), frame.z);
+            string origin = "table";
+            if (StillOverrides.TrySite(frame.name, out Vector2 pinnedSite))
+            {
+                site = new Vector3(pinnedSite.x, data.HeightAt(pinnedSite.x, pinnedSite.y), pinnedSite.y);
+                origin = "env";
+            }
+
+            float yaw = frame.yaw;
+            float pitch = frame.pitch;
+            float fov = frame.fov;
+            float distance = frame.distance;
+            if (StillOverrides.TryValue(frame.name, "YAW", out float v)) { yaw = v; origin = "env"; }
+            if (StillOverrides.TryValue(frame.name, "PITCH", out v)) { pitch = v; origin = "env"; }
+            if (StillOverrides.TryValue(frame.name, "FOV", out v)) { fov = v; origin = "env"; }
+            if (StillOverrides.TryValue(frame.name, "DIST", out v)) { distance = v; origin = "env"; }
+
+            Vector3 camPos = site + Vector3.up * 3.5f;
+            string note = $"origin={origin} site=({site.x:F0},{site.z:F0}) " +
+                          $"h={data.HeightAt(site.x, site.z):F1} dist={distance:F0} ";
+
+            var look = TerrainLook(frame.exposure);
+            float sunAzimuth = frame.sunAzimuth;
+            if (StillOverrides.TryValue(frame.name, "SUN_AZ", out float az))
+            {
+                sunAzimuth = az;
+                origin = "env";
+            }
+            if (!float.IsNaN(sunAzimuth))
+            {
+                look.sunYawOffset = sunAzimuth - yaw;
+                note += $"sunAz={sunAzimuth:F0} ";
+            }
+
+            return Shot(outDir, frame.name, camPos, yaw, pitch, fov, look, terrain, null, "pinned", note);
+        }
+
+        /// <summary>Daylight look shared by the six frames; exposure is the only per-frame knob.</summary>
+        private static Look TerrainLook(float exposure)
+        {
+            return new Look
+            {
+                zenith = FromHex("5E6B78"),
+                horizon = FromHex("E4BE93"),
+                ground = FromHex("C9BFAE"),
+                sunColor = FromHex("FFEFD6"),
+                sun2Color = FromHex("E08A5C"),
+                fog = Color.Lerp(FromHex("E4BE93"), FromHex("D8D2C6"), 0.55f),
+                sunElevation = 34f,
+                sun2Elevation = 30f,
+                sunIntensity = 1.6f,
+                sun2Intensity = 0.25f,
+                fogStart = 700f,
+                fogEnd = 7000f,
+                exposure = exposure,
+                stars = 0f,
+                bloom = 0.30f,
+            };
+        }
+
+        /// <summary>Daylight look shared by the six frames; exposure is the only per-frame knob.</summary>
         private static string Shot(string dir, string name, Vector3 camPos, float yaw, float pitch, float fov,
-            Look look, WorldTerrain terrain, GameObject props, string source)
+            Look look, WorldTerrain terrain, GameObject props, string source, string note = "")
         {
             var spawned = new System.Collections.Generic.List<GameObject>();
             Material prevSky = RenderSettings.skybox;
@@ -624,6 +838,10 @@ namespace AI003.EditorTools
             sun.intensity = look.sunIntensity;
             sun.shadows = LightShadows.Soft;
             sun.shadowStrength = 0.9f;
+            // One cascade over 420 m gives ~0.2 m texels; without bias the terrain
+            // covers itself in black acne wedges.
+            sun.shadowBias = 0.06f;
+            sun.shadowNormalBias = 0.6f;
             sunObject.transform.rotation = Quaternion.LookRotation(-sunDir, Vector3.up);
             spawned.Add(sunObject);
 
@@ -714,11 +932,16 @@ namespace AI003.EditorTools
 
             // One line per frame — S5 included — so a drifted auto-pick shows up in
             // the console instead of silently invalidating a before/after pair.
-            Debug.Log($"[AI003][ASHKAR] shot={name} 来源={source} " +
+            string extra = string.IsNullOrEmpty(note) ? string.Empty : " " + note;
+            Debug.Log($"[AI003][ASHKAR] shot={name} 来源={source}{extra} " +
                       $"cam=({camPos.x:F1},{camPos.y:F1},{camPos.z:F1}) yaw={yaw:F1} pitch={pitch:F1} fov={fov:F1}");
 
             string path = Path.Combine(dir, name + ".png");
             RenderTo(camera, path);
+            if (name == "forest")
+            {
+                DiagnoseVegetation(camera);
+            }
 
             // Restore the skybox BEFORE destroying the temp sky material, or
             // RenderSettings is left pointing at a destroyed object and the scene
