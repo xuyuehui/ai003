@@ -89,6 +89,23 @@ Assets/StreamingAssets/world/          生成物（generate-world）
   （`stills-vegmask.ps1` 的 UNLIT 差分），不能用于外观评审；外观结论一律看 GUI 渲染件。
   证据：`artifacts/_diag/forest-batchmode.png` vs `artifacts/snapshots/forest.delivered.png`。
 
+#### 4.4.1 森林机位定案（2026-11-15）
+
+用户选 A：接受基线机位收尾，机位不再调。四组实测（`scripts/stills-vegdiff.py`，
+正常材质帧 vs `AI003_STILL_UNLIT=1` 帧差分，阈值 ≥8、blob ≥40 px、4 px 腐蚀分冠）：
+
+| 轮次 | site | yaw | pitch | fov | 整帧覆盖 | 顶部两档 | 分冠 | 结论 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **基线（采用）** | (-237, 727) | 222 | 10 | 32 | 26.09% | **35.48%** | 28 | stage3 PASS |
+| r1 林下仰视 | (-280, 680) | 222 | -8 | 55 | 23.62% | 5.35% | 41 | FAIL：上沿全是天空 |
+| r2 仰视减弱 | (-280, 680) | 222 | -2 | 55 | 28.44% | 10.45% | 44 | FAIL：覆盖堆在画面下半 |
+| r3 进林核 | (-292, 666) | 222 | -3 | 45 | 9.64% | 7.48% | 25 | FAIL：被单株近树挡死 |
+
+结论：**林下仰视在本资产高度下无效**——仰角越大画面上沿越是天空，树冠撑不满 804 px 的上 2/8；
+整帧覆盖最高的是 r2（28.44%），但顶部两档从 35.48 掉到 10.45，判据直接 FAIL。
+要把覆盖率再往上推只能动树高/密度/机位海拔，属于美术参数，本轮未试。
+完整数据（含每轮图片路径、失败原因）在 `artifacts/stills/stage2-rounds.json`。
+
 ### 4.4.-2 玩家是场景里的预制体实例
 
 - 菜单 `AI003/Author Player` 通过运行时的同一个工厂（`WorldBootstrap.CreatePlayerObject`）
