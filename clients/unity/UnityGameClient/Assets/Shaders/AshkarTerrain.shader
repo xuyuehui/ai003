@@ -14,6 +14,36 @@ Shader "AI003/AshkarTerrain"
         _DetailScale1 ("Detail Scale 1", Float) = 0.09
         _DetailScale2 ("Detail Scale 2", Float) = 0.37
         _DetailStrength ("Detail Strength", Range(0, 2)) = 0.5
+        [Header(Surface layers)]
+        _SurfaceStrength ("Surface Texture Strength", Range(0, 1)) = 0.55
+        _SurfaceNormalStrength ("Surface Normal Strength", Range(0, 2)) = 0.35
+        _SaltHeight ("Salt Band Height (m)", Float) = 3.0
+        _SandFineTile ("Sand Fine Tile (m)", Float) = 0.6
+        _SandMidTile ("Sand Mid Tile (m)", Float) = 2.5
+        _SandCoarseTile ("Sand Coarse Tile (m)", Float) = 10.0
+        _SaltTile ("Salt Tile (m)", Float) = 2.0
+        _RockTile ("Rock Tile (m)", Float) = 4.0
+        [NoScaleOffset] _SandFineAlbedo ("Sand Fine Albedo", 2D) = "white" {}
+        [NoScaleOffset] _SandFineNormal ("Sand Fine Normal", 2D) = "bump" {}
+        [NoScaleOffset] _SandMidAlbedo ("Sand Mid Albedo", 2D) = "white" {}
+        [NoScaleOffset] _SandMidNormal ("Sand Mid Normal", 2D) = "bump" {}
+        [NoScaleOffset] _SandCoarseAlbedo ("Sand Coarse Albedo", 2D) = "white" {}
+        [NoScaleOffset] _SandCoarseNormal ("Sand Coarse Normal", 2D) = "bump" {}
+        [NoScaleOffset] _SaltAlbedo ("Salt Albedo", 2D) = "white" {}
+        [NoScaleOffset] _SaltNormal ("Salt Normal", 2D) = "bump" {}
+        [NoScaleOffset] _RockAlbedo ("Rock Albedo", 2D) = "white" {}
+        [NoScaleOffset] _RockNormal ("Rock Normal", 2D) = "bump" {}
+        [Header(Snow cap)]
+        _SnowLine ("Snow Line (m)", Float) = 254.7
+        _SnowBlend ("Snow Line Blend (m)", Float) = 22.0
+        _SnowTile ("Snow Tile (m)", Float) = 2.0
+        [NoScaleOffset] _SnowAlbedo ("Snow Albedo", 2D) = "white" {}
+        [NoScaleOffset] _SnowNormal ("Snow Normal", 2D) = "bump" {}
+        [Header(Steppe grass)]
+        _GrassTile ("Grass Tile (m)", Float) = 2.0
+        _GrassStrength ("Grass Strength", Range(0, 1)) = 0.45
+        [NoScaleOffset] _GrassAlbedo ("Grass Albedo", 2D) = "white" {}
+        [NoScaleOffset] _GrassNormal ("Grass Normal", 2D) = "bump" {}
     }
 
     SubShader
@@ -45,6 +75,20 @@ Shader "AI003/AshkarTerrain"
 
             TEXTURE2D(_DetailNormal);
             SAMPLER(sampler_DetailNormal);
+            TEXTURE2D(_SandFineAlbedo);   SAMPLER(sampler_SandFineAlbedo);
+            TEXTURE2D(_SandFineNormal);   SAMPLER(sampler_SandFineNormal);
+            TEXTURE2D(_SandMidAlbedo);    SAMPLER(sampler_SandMidAlbedo);
+            TEXTURE2D(_SandMidNormal);    SAMPLER(sampler_SandMidNormal);
+            TEXTURE2D(_SandCoarseAlbedo); SAMPLER(sampler_SandCoarseAlbedo);
+            TEXTURE2D(_SandCoarseNormal); SAMPLER(sampler_SandCoarseNormal);
+            TEXTURE2D(_SaltAlbedo);       SAMPLER(sampler_SaltAlbedo);
+            TEXTURE2D(_SaltNormal);       SAMPLER(sampler_SaltNormal);
+            TEXTURE2D(_RockAlbedo);       SAMPLER(sampler_RockAlbedo);
+            TEXTURE2D(_RockNormal);       SAMPLER(sampler_RockNormal);
+            TEXTURE2D(_SnowAlbedo);       SAMPLER(sampler_SnowAlbedo);
+            TEXTURE2D(_SnowNormal);       SAMPLER(sampler_SnowNormal);
+            TEXTURE2D(_GrassAlbedo);      SAMPLER(sampler_GrassAlbedo);
+            TEXTURE2D(_GrassNormal);      SAMPLER(sampler_GrassNormal);
 
             CBUFFER_START(UnityPerMaterial)
                 float _Smoothness;
@@ -58,6 +102,19 @@ Shader "AI003/AshkarTerrain"
                 float _DetailScale1;
                 float _DetailScale2;
                 float _DetailStrength;
+                float _SurfaceStrength;
+                float _SurfaceNormalStrength;
+                float _SaltHeight;
+                float _SandFineTile;
+                float _SandMidTile;
+                float _SandCoarseTile;
+                float _SaltTile;
+                float _RockTile;
+                float _SnowLine;
+                float _SnowBlend;
+                float _SnowTile;
+                float _GrassTile;
+                float _GrassStrength;
             CBUFFER_END
 
             struct Attributes
@@ -136,6 +193,31 @@ Shader "AI003/AshkarTerrain"
                 float2 detail = (d1.xy * 0.75 + d2.xy * 0.45) * _DetailStrength * up * up * detailFade;
                 normalWS = normalize(normalWS + float3(detail.x, 0.0, detail.y));
 
+                // Surface layers: five scanned sets on world-XZ UVs. Sand blends by
+                // distance (fine near, coarse far), salt wins in the low salt band,
+                // rock on steep faces. Vertex colours keep the biome palette; the
+                // textures add the metre-scale detail a 4 m mesh cannot carry.
+                float flatW = smoothstep(0.55, 0.90, up);
+                float rockW = 1.0 - flatW;
+                float saltW = flatW * saturate(1.0 - input.positionWS.y / max(_SaltHeight, 0.01));
+                float sandW = saturate(flatW - saltW);
+                float midF = saturate((dist - 30.0) / 90.0);
+                float coarseF = saturate((dist - 160.0) / 240.0);
+
+                float2 nMid = SAMPLE_TEXTURE2D(_SandMidNormal, sampler_SandMidNormal, p / _SandMidTile).rg * 2.0 - 1.0;
+                float2 nRock = SAMPLE_TEXTURE2D(_RockNormal, sampler_RockNormal, p / _RockTile).rg * 2.0 - 1.0;
+                float2 nSalt = SAMPLE_TEXTURE2D(_SaltNormal, sampler_SaltNormal, p / _SaltTile).rg * 2.0 - 1.0;
+                float snowW = smoothstep(_SnowLine, _SnowLine + max(_SnowBlend, 0.01), input.positionWS.y) * flatW;
+                float2 nSnow = SAMPLE_TEXTURE2D(_SnowNormal, sampler_SnowNormal, p / _SnowTile).rg * 2.0 - 1.0;
+                // Steppe: green-dominant vertex colour means grass, not dune or salt.
+                // (The vertex colour is the biome palette, so the shader needs no data.)
+                float grassW = flatW * (1.0 - snowW)
+                               * saturate((input.color.rgb.g - input.color.rgb.b) * 4.0)
+                               * _GrassStrength;
+                float2 nGrass = SAMPLE_TEXTURE2D(_GrassNormal, sampler_GrassNormal, p / _GrassTile).rg * 2.0 - 1.0;
+                float2 surfN = nMid * sandW + nRock * rockW + nSalt * saltW + nSnow * snowW + nGrass * grassW;
+                normalWS = normalize(normalWS + float3(surfN.x, 0.0, surfN.y) * _SurfaceNormalStrength * up);
+
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
 
@@ -145,6 +227,22 @@ Shader "AI003/AshkarTerrain"
                 // Grain: two octaves of value noise keep big flat dunes alive.
                 float grain = ValueNoise(p * 0.85) * 0.62 + ValueNoise(p * 3.7) * 0.38;
                 float3 albedo = input.color.rgb * ((1.0 - _Speckle * 0.5) + grain * _Speckle);
+
+                // Same layer weights as the normal block: the albedo detail is the
+                // distance-blended sand trio, with salt/rock on their own faces.
+                float3 sandA = SAMPLE_TEXTURE2D(_SandFineAlbedo, sampler_SandFineAlbedo, p / _SandFineTile).rgb;
+                sandA = lerp(sandA, SAMPLE_TEXTURE2D(_SandMidAlbedo, sampler_SandMidAlbedo, p / _SandMidTile).rgb, midF);
+                sandA = lerp(sandA, SAMPLE_TEXTURE2D(_SandCoarseAlbedo, sampler_SandCoarseAlbedo, p / _SandCoarseTile).rgb, coarseF);
+                float3 saltA = SAMPLE_TEXTURE2D(_SaltAlbedo, sampler_SaltAlbedo, p / _SaltTile).rgb;
+                float3 rockA = SAMPLE_TEXTURE2D(_RockAlbedo, sampler_RockAlbedo, p / _RockTile).rgb;
+                float3 surfA = (sandA * sandW + saltA * saltW + rockA * rockW)
+                               / max(sandW + saltW + rockW, 1e-4);
+                float3 grassA = SAMPLE_TEXTURE2D(_GrassAlbedo, sampler_GrassAlbedo, p / _GrassTile).rgb;
+                surfA = lerp(surfA, grassA, saturate(grassW));
+                // Normalise around mid-grey so the layer modulates the theme colour
+                // instead of replacing it (a texture must not repaint the biome).
+                float3 surfMod = saturate(surfA / 0.45);
+                albedo *= lerp(float3(1.0, 1.0, 1.0), surfMod, _SurfaceStrength);
 
                 float3 ambient = SampleSH(normalWS);
                 float3 color = albedo * (ambient + mainLight.color * diff * mainLight.shadowAttenuation);

@@ -87,6 +87,22 @@ namespace AI003.EditorTools
                       $"under {RootName} — save the scene");
         }
 
+        /// <summary>
+        /// Batch entry: re-author only the vegetation into the saved OpenWorld scene.
+        /// A still or a review run pipes this through -executeMethod so the scene keeps
+        /// the same mesh GUIDs without re-baking terrain or dressing.
+        /// </summary>
+        [MenuItem("AI003/Author Vegetation (batch)")]
+        public static void RunBatch()
+        {
+            var scene = EditorSceneManager.OpenScene("Assets/Scenes/OpenWorld.unity", OpenSceneMode.Single);
+            Run();
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[AI003][VEG] OpenWorld vegetation re-authored and saved");
+        }
+
         private static bool IsForest(float slope, float m)
         {
             return m >= WorldTheme.ForestMoisture && slope <= ForestSlope;
@@ -178,9 +194,15 @@ namespace AI003.EditorTools
                 return 0;
             }
 
+            // The import scale is the one number that can silently sink the whole layer
+            // (a cm-authored FBX under a 1 m world made every tree 4 cm); print it.
+            float srcHeight = source.bounds.size.y;
+            Debug.Log($"[AI003][VEG] {species} srcHeight={srcHeight:F3} m instances={matrices.Count} " +
+                      $"instanceHeight={srcHeight * 0.85f:F2}..{srcHeight * 1.15f:F2} m (scale 0.85..1.15)");
+
             mesh = Combine(species, source, matrices);
-            var material = LoadOrCreateMaterial(species, tint);
-            EnsureBake(root, species, mesh, material);
+            var materials = LoadMaterials(species, source.subMeshCount, tint);
+            EnsureBake(root, species, mesh, materials);
             return matrices.Count;
         }
 
@@ -188,7 +210,7 @@ namespace AI003.EditorTools
         /// Reuses the species GameObject when it already exists: recreating it renumbers
         /// the scene every bake (202 lines of churn measured across two identical runs).
         /// </summary>
-        private static void EnsureBake(GameObject root, string species, Mesh mesh, Material material)
+        private static void EnsureBake(GameObject root, string species, Mesh mesh, Material[] materials)
         {
             var existing = root.transform.Find(species);
             var go = existing != null ? existing.gameObject : new GameObject(species);
@@ -209,7 +231,7 @@ namespace AI003.EditorTools
             {
                 renderer = go.AddComponent<MeshRenderer>();
             }
-            renderer.sharedMaterial = material;
+            renderer.sharedMaterials = materials;
             renderer.shadowCastingMode = ShadowCastingMode.On;
             renderer.receiveShadows = true;
         }
@@ -279,10 +301,14 @@ namespace AI003.EditorTools
                 return 0;
             }
 
+            float acaciaHeight = source.bounds.size.y;
+            Debug.Log($"[AI003][VEG] acacia srcHeight={acaciaHeight:F3} m instances={matrices.Count} " +
+                      $"instanceHeight={acaciaHeight * 0.9f:F2}..{acaciaHeight * 1.15f:F2} m (scale 0.9..1.15)");
+
             Combine("acacia", source, matrices);
-            var material = LoadOrCreateMaterial("acacia", new Color(0.30f, 0.27f, 0.16f));
+            var materials = LoadMaterials("acacia", source.subMeshCount, new Color(0.30f, 0.27f, 0.16f));
             var mesh = AssetDatabase.LoadAssetAtPath<Mesh>($"{MeshDir}/acacia.asset");
-            EnsureBake(root, "acacia", mesh, material);
+            EnsureBake(root, "acacia", mesh, materials);
             return matrices.Count;
         }
 
@@ -321,13 +347,26 @@ namespace AI003.EditorTools
             Vector3[] sn = source.normals;
             Vector2[] su = source.uv;
             Vector2[] su2 = source.uv2;
-            int[] st = source.triangles;
+
+            // Trees and rocks carry two submeshes (trunk + canopy, rock + snow cap).
+            // Taking source.triangles flattened them into one slot and the canopy was
+            // drawn with the bark material; keep one index list per source submesh.
+            int subCount = Mathf.Max(1, source.subMeshCount);
+            int[][] srcTris = new int[subCount][];
+            for (int s = 0; s < subCount; s++)
+            {
+                srcTris[s] = source.GetTriangles(s);
+            }
 
             var verts = new List<Vector3>(instances.Count * sv.Length);
             var normals = new List<Vector3>(instances.Count * sn.Length);
             var uvs = new List<Vector2>(instances.Count * su.Length);
             var uvs2 = new List<Vector2>(instances.Count * su.Length);
-            var tris = new List<int>(instances.Count * st.Length);
+            var subTris = new List<int>[subCount];
+            for (int s = 0; s < subCount; s++)
+            {
+                subTris[s] = new List<int>(instances.Count * srcTris[s].Length);
+            }
 
             for (int i = 0; i < instances.Count; i++)
             {
@@ -337,66 +376,91 @@ namespace AI003.EditorTools
                 {
                     verts.Add(m.MultiplyPoint3x4(sv[v]));
                     normals.Add(m.MultiplyVector(sn[v]).normalized);
-                    // UV0 gets the WORLD-TILED set: a texture sampled at UV1 would need a
-                    // custom shader, and the atlas set stretches (46 px/m on conifer).
+                    // UV0 gets the WORLD-METRE set (UV1 of the source); the material then
+                    // scales it by 1/tile. The new source meshes write real metres there.
                     uvs.Add(su2.Length > v ? su2[v] : Vector2.zero);
                     uvs2.Add(su.Length > v ? su[v] : Vector2.zero);
                 }
-                for (int t = 0; t < st.Length; t++)
+                for (int s = 0; s < subCount; s++)
                 {
-                    tris.Add(baseIndex + st[t]);
+                    int[] st = srcTris[s];
+                    for (int t = 0; t < st.Length; t++)
+                    {
+                        subTris[s].Add(baseIndex + st[t]);
+                    }
                 }
             }
 
-            var mesh = new Mesh { name = species };
-            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-            mesh.SetVertices(verts);
-            mesh.SetNormals(normals);
-            mesh.SetUVs(0, uvs);
-            mesh.SetUVs(1, uvs2);
-            mesh.SetTriangles(tris, 0);
-            mesh.RecalculateBounds();
+            void Fill(Mesh m)
+            {
+                m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                m.SetVertices(verts);
+                m.SetNormals(normals);
+                m.SetUVs(0, uvs);
+                m.SetUVs(1, uvs2);
+                m.subMeshCount = subCount;
+                for (int s = 0; s < subCount; s++)
+                {
+                    m.SetTriangles(subTris[s], s);
+                }
+                m.RecalculateBounds();
+                // The canopy materials sample _BumpMap; without tangents the normal map
+                // is silently dropped by URP.
+                m.RecalculateTangents();
+            }
 
             string path = $"{MeshDir}/{species}.asset";
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing == null)
             {
+                var mesh = new Mesh { name = species };
+                Fill(mesh);
                 AssetDatabase.CreateAsset(mesh, path);
                 return mesh;
             }
 
             // Keep the GUID so a re-run does not renumber the scene references.
             existing.Clear();
-            existing.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-            existing.SetVertices(verts);
-            existing.SetNormals(normals);
-            existing.SetUVs(0, uvs);
-            existing.SetUVs(1, uvs2);
-            existing.SetTriangles(tris, 0);
-            existing.RecalculateBounds();
+            Fill(existing);
             EditorUtility.SetDirty(existing);
-            Object.DestroyImmediate(mesh);
             return existing;
         }
 
-        private static Material LoadOrCreateMaterial(string species, Color tint)
+        private static Material[] LoadMaterials(string species, int subMeshCount, Color tint)
+        {
+            int count = Mathf.Max(1, subMeshCount);
+            var materials = new Material[count];
+            for (int s = 0; s < count; s++)
+            {
+                materials[s] = LoadOrCreateMaterial(species, s, count, tint);
+            }
+            return materials;
+        }
+
+        /// <summary>
+        /// One material per submesh: slot 0 is {species}.mat (trunk / rock), slot 1 is
+        /// {species}_1.mat (canopy / snow cap). Albedo, normal and roughness come from the
+        /// species' texture set; UV0 is metres, so the map is scaled by 1/tile.
+        /// </summary>
+        private static Material LoadOrCreateMaterial(string species, int submesh, int subMeshCount, Color tint)
         {
             Directory.CreateDirectory(MaterialDir);
-            string path = $"{MaterialDir}/{species}.mat";
+            string file = submesh == 0 ? species : $"{species}_{submesh}";
+            string path = $"{MaterialDir}/{file}.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null)
             {
                 var shader = Shader.Find("Universal Render Pipeline/Lit");
-                material = new Material(shader) { name = species };
+                material = new Material(shader) { name = file };
                 AssetDatabase.CreateAsset(material, path);
             }
 
             material.SetColor("_BaseColor", Color.white);
-            material.SetFloat("_Smoothness", 0.12f);
+            material.SetFloat("_Metallic", 0f);
+            material.SetFloat("_Smoothness", 0.30f);
 
-            // UV0 carries world metres (see Combine), so the material scale is 1/tile.
-            string set = TextureSet(species);
-            float tile = TileMeters(species);
+            string set = subMeshCount > 1 ? TextureSet(species, submesh) : TextureSet(species);
+            float tile = subMeshCount > 1 ? TileMeters(species, submesh) : TileMeters(species);
             var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 $"{TextureDir}/{set}/{set}_albedo_1024.png");
             if (albedo != null)
@@ -407,6 +471,20 @@ namespace AI003.EditorTools
             else
             {
                 material.SetColor("_BaseColor", tint);
+            }
+
+            // Normal maps only sample when the keyword is on; Combine() writes tangents.
+            var normal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                $"{TextureDir}/{set}/{set}_normal_1024.png");
+            if (normal != null)
+            {
+                material.SetTexture("_BumpMap", normal);
+                material.SetFloat("_BumpScale", 0.8f);
+                material.EnableKeyword("_NORMALMAP");
+            }
+            else
+            {
+                material.DisableKeyword("_NORMALMAP");
             }
 
             // Grass and bush cards: cutout, double sided (贴图 spec: alpha clip 0.5).
@@ -450,6 +528,34 @@ namespace AI003.EditorTools
                 default:
                     return "rock_cliff";
             }
+        }
+
+        /// <summary>Texture set for a two-material species: slot 0 bark/rock, slot 1 cap.</summary>
+        private static string TextureSet(string species, int submesh)
+        {
+            if (submesh == 0)
+            {
+                return species.StartsWith("snow_rock") ? "rock_cliff" : "bark";
+            }
+            switch (species)
+            {
+                case "conifer":
+                    return "canopy_needle";
+                case "acacia":
+                case "acacia_small":
+                    return "canopy_umbrella";
+                default:
+                    return "snow";
+            }
+        }
+
+        private static float TileMeters(string species, int submesh)
+        {
+            if (submesh > 0)
+            {
+                return species.StartsWith("snow_rock") ? 1f : 2.5f;
+            }
+            return TileMeters(species);
         }
 
         private static float TileMeters(string species)

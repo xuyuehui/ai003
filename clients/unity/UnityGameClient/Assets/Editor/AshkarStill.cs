@@ -71,8 +71,17 @@ namespace AI003.EditorTools
             new Frame { name = "ocean", x = -556f, z = 576f, yaw = 225f, pitch = 6f, fov = 64f, distance = 25f, exposure = -0.10f, sunAzimuth = float.NaN },
             // 验证's forest point: 82 m from the stand core (−292,666), 20 conifers in
             // front and 43% canopy coverage; the old (−116,728)/yaw236 looked away.
-            new Frame { name = "forest", x = -237f, z = 727f, yaw = 222f, pitch = 3f, fov = 50f, distance = 82f, exposure = 0.05f, sunAzimuth = float.NaN },
-            new Frame { name = "steppe", x = 423f, z = -203f, yaw = 339f, pitch = 9f, fov = 60f, distance = 100f, exposure = -0.05f, sunAzimuth = float.NaN },
+            // 覆盖率实测（验证 的 UNLIT 差分，几何投影，与颜色无关）：
+            //   fov50 / 82 m, pitch 3  -> 17.0%
+            //   fov32 / 82 m, pitch 3  -> 24.61%（可分冠 60）
+            //   site 前移 35 m + fov28, pitch 4 -> 22.27%（可分冠 40，近树冠被上沿切掉）
+            // 结论：收 FOV / 前移都让近树冠出画，边际是负的。改成退回 82 m、
+            // 抬高 pitch 把近树冠接进画面上沿（fov 保持 32，仍比 50 紧一点）。
+            new Frame { name = "forest", x = -237f, z = 727f, yaw = 222f, pitch = 10f, fov = 32f, distance = 82f, exposure = 0.05f, sunAzimuth = float.NaN },
+            // 草原：原 (423,-203)/yaw339 落在湿森林口袋里（地面是森林绿、近景全是针叶树）。
+            // (−592,−368) 是这片世界最大的连片干草地之一（m≈0.58，前方 400 m 九成是草地，
+            // 500 m 视锥内针叶树 18 株，全是远景），高度 134 m 能俯看草原。
+            new Frame { name = "steppe", x = -592f, z = -368f, yaw = 315f, pitch = 6f, fov = 60f, distance = 120f, exposure = -0.05f, sunAzimuth = float.NaN },
             // Snow: the mean snow normal faces ~255°, so the shared sun leaves it in
             // shadow; 254° lights 99% of the snow pixels (verified by 验证).
             new Frame { name = "snow", x = 109f, z = 512f, yaw = 30f, pitch = -10f, fov = 50f, distance = 103f, exposure = -0.25f, sunAzimuth = 254f },
@@ -111,8 +120,16 @@ namespace AI003.EditorTools
 
         private static string[] RenderAll()
         {
-            string outDir = Path.GetFullPath(
-                Path.Combine(Application.dataPath, "..", "..", "..", "..", "artifacts", "ashkar"));
+            // Experiments must never clobber the accepted stills: AI003_STILL_OUTDIR
+            // redirects the whole frame set to a run directory.
+            string outDir = Environment.GetEnvironmentVariable("AI003_STILL_OUTDIR");
+            if (string.IsNullOrEmpty(outDir))
+            {
+                outDir = Path.GetFullPath(
+                    Path.Combine(Application.dataPath, "..", "..", "..", "..", "artifacts", "ashkar"));
+            }
+            outDir = Path.GetFullPath(outDir);
+            Debug.Log($"[AI003][ASHKAR] outDir={outDir}");
             Directory.CreateDirectory(outDir);
 
             var data = WorldData.Load(Path.Combine(Application.streamingAssetsPath, "world"));
@@ -143,6 +160,7 @@ namespace AI003.EditorTools
                 terrain.TerrainMaterial.SetFloat("_DetailScale1", 0.085f);
                 terrain.TerrainMaterial.SetFloat("_DetailScale2", 0.34f);
                 terrain.TerrainMaterial.SetFloat("_DetailStrength", 0.55f);
+                WireSurfaceTextures(terrain.TerrainMaterial);
 
                 foreach (var r in root.GetComponentsInChildren<MeshRenderer>())
                 {
@@ -164,6 +182,7 @@ namespace AI003.EditorTools
                 {
                     Debug.LogWarning("[AI003][ASHKAR] terrain has no water object");
                 }
+                WireWaterTextures();
 
                 // The still camera world is built from scratch, so the baked vegetation
                 // has to be attached here too; its meshes are already in world space.
@@ -198,6 +217,9 @@ namespace AI003.EditorTools
                 if (legacy && Wanted("S1")) Run("S1", () => paths.Add(RenderS1(data, terrain, outDir, site, viewDir)));
                 if (legacy && Wanted("S4")) Run("S4", () => paths.Add(RenderS4(data, terrain, outDir)));
                 if (legacy && Wanted("S5")) Run("S5", () => paths.Add(RenderS5(data, terrain, outDir, site, viewDir, rigSource)));
+
+                // (bisect ①: Shader.WarmupAllShaders() removed — it mutates global
+                // shader state and is a magenta suspect.)
 
                 // Six pinned terrain frames: the acceptance set for the biome work.
                 foreach (Frame frame in Frames)
@@ -691,6 +713,7 @@ namespace AI003.EditorTools
         {
             VegetationRenderers.Clear();
             _vegetationDiagnosed = false;
+
             string[] species = { "conifer", "dead_tree", "acacia", "acacia_small", "snow_rock", "snow_rock_b", "grass_tuft_b", "bush_a" };
             int added = 0;
             foreach (string slug in species)
@@ -704,27 +727,47 @@ namespace AI003.EditorTools
                 go.transform.SetParent(parent, false);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var renderer = go.AddComponent<MeshRenderer>();
-                var material = AssetDatabase.LoadAssetAtPath<Material>($"Assets/Settings/Vegetation/{slug}.mat");
-                if (Environment.GetEnvironmentVariable("AI003_STILL_UNLIT") == "1")
+                // Trees and rocks have two material slots (trunk + canopy, rock + snow cap).
+                int slots = Mathf.Max(1, mesh.subMeshCount);
+                var materials = new Material[slots];
+                for (int s = 0; s < slots; s++)
                 {
-                    // Diagnostic: a flat unlit colour separates "material/shader variant
-                    // missing" from "geometry or hierarchy wrong".
-                    material = new Material(Shader.Find("Unlit/Color"))
+                    string file = s == 0 ? slug : $"{slug}_{s}";
+                    var material = AssetDatabase.LoadAssetAtPath<Material>($"Assets/Settings/Vegetation/{file}.mat");
+                    if (Environment.GetEnvironmentVariable("AI003_STILL_UNLIT") == "1")
                     {
-                        color = Color.HSVToRGB((added * 0.17f) % 1f, 1f, 1f),
-                    };
+                        // Diagnostic: a flat URP unlit colour separates "material/shader
+                        // variant missing" from "geometry or hierarchy wrong". The built-in
+                        // Unlit/Color shader has no URP pass and renders nothing at all.
+                        var unlit = Shader.Find("Universal Render Pipeline/Unlit");
+                        material = unlit != null
+                            ? new Material(unlit) { name = "veg_unlit" }
+                            : material;
+                        if (material != null && unlit != null)
+                        {
+                            material.SetColor("_BaseColor", Color.HSVToRGB((added * 0.17f) % 1f, 1f, 1f));
+                        }
+                    }
+                    else if (Environment.GetEnvironmentVariable("AI003_STILL_CULLOFF") == "1" && material != null)
+                    {
+                        // Diagnostic: reversed winding would hide every front face from the
+                        // colour pass while the shadow pass still draws.
+                        material = new Material(material);
+                        material.SetFloat("_Cull", 0f);
+                    }
+
+                    // bisect ③: strip the normal-map keyword when probing the variant
+                    // trigger; the copy keeps the .mat asset untouched.
+                    if (material != null && Environment.GetEnvironmentVariable("AI003_STILL_VEG_NONORMAL") == "1")
+                    {
+                        material = new Material(material);
+                        material.DisableKeyword("_NORMALMAP");
+                        material.SetTexture("_BumpMap", null);
+                    }
+
+                    materials[s] = material;
                 }
-                else if (Environment.GetEnvironmentVariable("AI003_STILL_CULLOFF") == "1" && material != null)
-                {
-                    // Diagnostic: reversed winding would hide every front face from the
-                    // colour pass while the shadow pass (Cull Off) still draws.
-                    material = new Material(material);
-                    material.SetFloat("_Cull", 0f);
-                }
-                if (material != null)
-                {
-                    renderer.sharedMaterial = material;
-                }
+                renderer.sharedMaterials = materials;
                 renderer.shadowCastingMode = ShadowCastingMode.On;
                 VegetationRenderers.Add(renderer);
                 added++;
@@ -743,18 +786,125 @@ namespace AI003.EditorTools
             Debug.Log($"[AI003][VEGDIAG] camera layerMask={camera.cullingMask} pos={camera.transform.position}");
             foreach (var renderer in VegetationRenderers)
             {
-                var material = renderer.sharedMaterial;
-                var baseMap = material != null ? material.GetTexture("_BaseMap") : null;
                 var mesh = renderer.GetComponent<MeshFilter>()?.sharedMesh;
+                // Trees have two slots; the canopy is slot 1. Logging only
+                // sharedMaterial (slot 0) made every run look like the canopy was
+                // never attached, so print every slot's _BaseMap.
+                var slotMaps = new System.Text.StringBuilder();
+                var shared = renderer.sharedMaterials;
+                for (int s = 0; s < shared.Length; s++)
+                {
+                    var tex = shared[s] != null ? shared[s].GetTexture("_BaseMap") : null;
+                    if (s > 0) slotMaps.Append('|');
+                    slotMaps.Append(tex != null ? tex.name : (shared[s] != null ? "null" : "noMat"));
+                }
                 Debug.Log($"[AI003][VEGDIAG] {renderer.name} isVisible={renderer.isVisible} " +
                           $"layer={renderer.gameObject.layer} enabled={renderer.enabled} " +
                           $"inCameraMask={((camera.cullingMask & (1 << renderer.gameObject.layer)) != 0)} " +
-                          $"hasMat={material != null} baseMap={(baseMap != null ? baseMap.name : "NULL")} " +
+                          $"subMeshes={(mesh != null ? mesh.subMeshCount : -1)} slots={shared.Length} " +
+                          $"baseMaps=[{slotMaps}] " +
                           $"meshVerts={(mesh != null ? mesh.vertexCount : -1)} " +
                           $"meshTris={(mesh != null ? mesh.triangles.Length : -1)} " +
-                          $"subMeshes={(mesh != null ? mesh.subMeshCount : -1)} " +
                           $"boundsCenter={renderer.bounds.center} boundsSize={renderer.bounds.size}");
             }
+        }
+
+        /// <summary>
+        /// Attaches the five scanned surface sets to the layered terrain shader.
+        /// The material is created at runtime, so this is the one place the stills get
+        /// real grain; tile sizes come from the delivery manifest (metres).
+        /// </summary>
+        private static void WireSurfaceTextures(Material m)
+        {
+            var layers = new (string set, string prop, float tile)[]
+            {
+                ("sand_fine", "SandFine", 0.6f),
+                ("sand_mid_ripple", "SandMid", 2.5f),
+                ("sand_coarse", "SandCoarse", 10.0f),
+                ("salt_crust", "Salt", 2.0f),
+                ("rock_cliff", "Rock", 4.0f),
+            };
+            foreach (var layer in layers)
+            {
+                var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    $"Assets/Settings/Textures/surface/{layer.set}/{layer.set}_albedo_1024.png");
+                var normal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    $"Assets/Settings/Textures/surface/{layer.set}/{layer.set}_normal_1024.png");
+                if (albedo != null)
+                {
+                    m.SetTexture($"_{layer.prop}Albedo", albedo);
+                }
+                if (normal != null)
+                {
+                    m.SetTexture($"_{layer.prop}Normal", normal);
+                }
+                m.SetFloat($"_{layer.prop}Tile", layer.tile);
+                Debug.Log($"[AI003][ASHKAR] surface {layer.set} tile={layer.tile}m " +
+                          $"albedo={(albedo != null ? albedo.name : "NULL")} " +
+                          $"normal={(normal != null ? normal.name : "NULL")}");
+            }
+            m.SetFloat("_SurfaceStrength", 0.55f);
+            m.SetFloat("_SurfaceNormalStrength", 0.35f);
+            m.SetFloat("_SaltHeight", 3.0f);
+
+            // Snow cap: the new wind-drift set replaces the old vegetation snow texture.
+            var snowAlbedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/snow_field/snow_field_albedo_1024.png");
+            var snowNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/snow_field/snow_field_normal_1024.png");
+            m.SetTexture("_SnowAlbedo", snowAlbedo);
+            m.SetTexture("_SnowNormal", snowNormal);
+            m.SetFloat("_SnowTile", 3.0f);
+            m.SetFloat("_SnowLine", WorldTheme.SnowLineMeters);
+            m.SetFloat("_SnowBlend", 22.0f);
+
+            // Steppe grass: 2 m dry-grass set, weighted by green-dominant vertex colour.
+            var grassAlbedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/steppe_grass/steppe_grass_albedo_1024.png");
+            var grassNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/steppe_grass/steppe_grass_normal_1024.png");
+            m.SetTexture("_GrassAlbedo", grassAlbedo);
+            m.SetTexture("_GrassNormal", grassNormal);
+            m.SetFloat("_GrassTile", 2.0f);
+            m.SetFloat("_GrassStrength", 0.45f);
+            Debug.Log($"[AI003][ASHKAR] grass set tile=2m " +
+                      $"albedo={(grassAlbedo != null ? grassAlbedo.name : "NULL")} " +
+                      $"normal={(grassNormal != null ? grassNormal.name : "NULL")}");
+            Debug.Log($"[AI003][ASHKAR] snow cap set tile=3m line={WorldTheme.SnowLineMeters}m " +
+                      $"albedo={(snowAlbedo != null ? snowAlbedo.name : "NULL")} " +
+                      $"normal={(snowNormal != null ? snowNormal.name : "NULL")}");
+        }
+
+        /// <summary>Water: the delivered ocean set on the sea plane's URP/Lit material.</summary>
+        private static void WireWaterTextures()
+        {
+            var water = AssetDatabase.LoadAssetAtPath<Material>("Assets/Settings/AshkarOcean.mat");
+            if (water == null)
+            {
+                Debug.LogWarning("[AI003][ASHKAR] AshkarOcean.mat missing");
+                return;
+            }
+            var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/water_ocean/water_ocean_albedo_1024.png");
+            var normal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Settings/Textures/surface/water_ocean/water_ocean_normal_1024.png");
+            if (albedo != null)
+            {
+                water.SetTexture("_BaseMap", albedo);
+                water.SetTextureScale("_BaseMap", new Vector2(1f / 8f, 1f / 8f));
+            }
+            if (normal != null)
+            {
+                water.SetTexture("_BumpMap", normal);
+                water.SetTextureScale("_BumpMap", new Vector2(1f / 8f, 1f / 8f));
+                water.SetFloat("_BumpScale", 0.8f);
+                water.EnableKeyword("_NORMALMAP");
+            }
+            water.SetFloat("_Smoothness", 0.90f);
+            EditorUtility.SetDirty(water);
+            Debug.Log($"[AI003][ASHKAR] water set tile=8m " +
+                      $"albedo={(albedo != null ? albedo.name : "NULL")} " +
+                      $"normal={(normal != null ? normal.name : "NULL")}");
         }
 
         private static string RenderFrame(WorldData data, WorldTerrain terrain, string outDir, Frame frame)
@@ -932,8 +1082,12 @@ namespace AI003.EditorTools
 
             // One line per frame — S5 included — so a drifted auto-pick shows up in
             // the console instead of silently invalidating a before/after pair.
+            // mode= is not cosmetic: batchmode shades vegetation ~1.5 stops darker than
+            // the GUI editor on the same rig (验证 measured it), so a frame's look is
+            // only comparable to another frame with the same mode.
             string extra = string.IsNullOrEmpty(note) ? string.Empty : " " + note;
             Debug.Log($"[AI003][ASHKAR] shot={name} 来源={source}{extra} " +
+                      $"mode={(Application.isBatchMode ? "batchmode" : "gui")} " +
                       $"cam=({camPos.x:F1},{camPos.y:F1},{camPos.z:F1}) yaw={yaw:F1} pitch={pitch:F1} fov={fov:F1}");
 
             string path = Path.Combine(dir, name + ".png");
